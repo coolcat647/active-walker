@@ -24,13 +24,8 @@
  */
 #include <stdio.h>
 #include <sys/types.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <semaphore.h>
-#include <fcntl.h>
-#include <sys/shm.h>
-#include <sys/stat.h>
+
 
 #include "mcdc3006s_drivers/mcdc3006s.h"
 

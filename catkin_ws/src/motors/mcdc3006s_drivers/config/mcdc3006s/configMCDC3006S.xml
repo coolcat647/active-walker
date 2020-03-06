@@ -17,7 +17,7 @@
 		<calibrationTimeOut>5000</calibrationTimeOut>
 		<rs232>
 			<serialDevice>/dev/brazo_derecho</serialDevice>
-			<baudRate>19200</baudRate>
+			<baudRate>115200</baudRate>
 		</rs232>
 		<semaphore>
 			<semFile>semDrive</semFile>

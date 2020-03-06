@@ -153,6 +153,10 @@ ADD_SUBDIRECTORY(src)
 #   ${catkin_LIBRARIES}
 # )
 
+add_executable(differential_drive_node src/differential_drive_node.cpp)
+target_link_libraries(differential_drive_node ${catkin_LIBRARIES})
+target_link_libraries(differential_drive_node mcdc3006s)
+
 #############
 ## Install ##
 #############
