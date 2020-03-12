@@ -441,6 +441,25 @@ int Mcdc3006s::set_config(driverConf_t dc)
 }
 
 //////////////////////////////////////////////////
+int Mcdc3006s::set_ac_dec(void)
+{
+    char command[SP_MSG_SIZE];
+    sprintf(command, "AC%d\n\r\0", 10);
+    if (_comm.writeToRS232(command, strlen(command)) < ERR_NOERR) {
+        ROS_ERROR("[MCDC3006S] setDriverMaxPos() --> Error writing to the driver");
+
+        return ERR_WRI;
+    }
+    usleep(5000);
+    sprintf(command, "DEC%d\n\r\0", 100);
+    if (_comm.writeToRS232(command, strlen(command)) < ERR_NOERR) {
+        ROS_ERROR("[MCDC3006S] setDriverMaxPos() --> Error writing to the driver");
+
+        return ERR_WRI;
+    }
+
+    return ERR_NOERR;
+}
 
 int Mcdc3006s::set_max_pos(long int maxPos)
 {

@@ -10,6 +10,8 @@ project(mcdc3006s_drivers)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   sr_communications
+  serial
+  tf
 )
 
 ## System dependencies are found with CMake's conventions
@@ -104,8 +106,8 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
    INCLUDE_DIRS include
    # LIBRARIES mcdc3006s_drivers
-   CATKIN_DEPENDS roscpp
-   DEPENDS sr_communications
+   CATKIN_DEPENDS roscpp serial tf
+   DEPENDS sr_communications 
 #  DEPENDS system_lib
 )
 
@@ -155,7 +157,7 @@ ADD_SUBDIRECTORY(src)
 
 add_executable(differential_drive_node src/differential_drive_node.cpp)
 target_link_libraries(differential_drive_node ${catkin_LIBRARIES})
-target_link_libraries(differential_drive_node mcdc3006s)
+# target_link_libraries(differential_drive_node mcdc3006s)
 
 #############
 ## Install ##

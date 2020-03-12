@@ -215,6 +215,7 @@ class Mcdc3006s : public MotorDriverInterface {
          * @return ERR_WRI if could not write to the driver
          * @return ERR_POSLIMIT if it is not possible to activate the limits
          */
+        int set_ac_dec(void);
         int set_max_pos(long int maxPos);
 
         /**

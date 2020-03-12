@@ -6,4 +6,4 @@ if [ ! -f "$rule_file" ]; then
 fi
 
 sudo udevadm trigger
-sudo service udev restart
+#sudo service udev restart
