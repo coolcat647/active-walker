@@ -9,6 +9,10 @@ project(mcdc3006s_drivers)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   roscpp
+  nav_msgs
+  geometry_msgs
+  std_msgs
+  std_srvs
   sr_communications
   serial
   tf
@@ -106,7 +110,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
    INCLUDE_DIRS include
    # LIBRARIES mcdc3006s_drivers
-   CATKIN_DEPENDS roscpp serial tf
+   CATKIN_DEPENDS roscpp serial tf nav_msgs geometry_msgs std_msgs std_srvs
    DEPENDS sr_communications 
 #  DEPENDS system_lib
 )

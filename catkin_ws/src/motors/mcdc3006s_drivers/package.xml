@@ -53,14 +53,26 @@
   <build_depend>sr_communications</build_depend>
   <build_depend>serial</build_depend>
   <build_depend>tf</build_depend>
+  <build_depend>nav_msgs</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>std_srvs</build_depend>
   <build_export_depend>roscpp</build_export_depend>
   <build_export_depend>sr_communications</build_export_depend>
   <build_export_depend>serial</build_export_depend>
   <build_export_depend>tf</build_export_depend>
+  <build_export_depend>nav_msgs</build_export_depend>
+  <build_export_depend>geometry_msgs</build_export_depend>
+  <build_export_depend>std_msgs</build_export_depend>
+  <build_export_depend>std_srvs</build_export_depend>
   <exec_depend>roscpp</exec_depend>
   <exec_depend>sr_communications</exec_depend>
   <exec_depend>serial</exec_depend>
   <exec_depend>tf</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
   <!-- tests dependencies -->
   <test_depend>gtest</test_depend>
   <test_depend>google-mock</test_depend>

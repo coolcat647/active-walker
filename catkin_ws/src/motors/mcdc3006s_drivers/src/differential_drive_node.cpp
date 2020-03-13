@@ -1,16 +1,5 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <signal.h>
 
-// For ROS
-#include <ros/ros.h>
-#include <tf/tf.h>
-#include <tf/transform_broadcaster.h>
-#include <geometry_msgs/Twist.h>
-#include <geometry_msgs/Quaternion.h>
-#include <geometry_msgs/TransformStamped.h>
-#include <nav_msgs/Odometry.h>
-#include "serial/serial.h"
+#include "differential_drive_node.hpp"
 
 using namespace std;
 
@@ -19,9 +8,7 @@ static const string COLOR_GREEN = "\e[0;32m";
 static const string COLOR_YELLOW = "\e[0;33m"; 
 static const string COLOR_NC = "\e[0m";
 
-// Need to consider
-//   estop
-
+// Custom operators
 namespace geometry_msgs {
     bool operator== (const Twist &cmd1, const Twist &cmd2) {
         double epsilon = 1e-6;
@@ -33,49 +20,6 @@ namespace geometry_msgs {
     }
 }
 
-class DiffDriveNode {
-public:
-    DiffDriveNode();
-    static void sigint_cb(int sig);
-    void send_motor_cmd(serial::Serial* ser, const char* cmd);
-    int ask_motor_feedback(serial::Serial* ser, const char* cmd);
-
-    serial::Serial* ser_l_;
-    serial::Serial* ser_r_;
-
-private:
-    void motors_init(int baudrate);
-    void timer_cb(const ros::TimerEvent& event);
-    void cmd_cb(const geometry_msgs::Twist& msg);
-
-    // ROS related
-    ros::NodeHandle nh_;                            // Private ros node handler
-    ros::Timer timer_;
-    ros::Publisher pub_odom_;  
-    ros::Subscriber sub_cmd_;                     
-    geometry_msgs::Twist cmd_msg_;                  // velocity msg;
-    tf::TransformBroadcaster  odom_broadcaster_;
-    volatile int real_rpml_, real_rpmr_;
-    volatile int last_real_rpml_, last_real_rpmr_;
-    bool is_first_odom = true;
-    double robot_x_, robot_y_, robot_theta_;
-
-
-    // Motor configure related
-    string ser_name_l_;
-    string ser_name_r_;
-    
-    double wheel_radius_;
-    double wheel_dis_;
-    double gear_ratio_;
-
-    // Timer related
-    double timer_interval_;                         // ROS Timer interval
-    double wtd_interval_;                           // Watchdog timer interval
-    ros::Time last_cmd_time_ = ros::Time();
-};
-
-
 //    __   __        __  ___  __        __  ___  __   __  
 //   /  ` /  \ |\ | /__`  |  |__) |  | /  `  |  /  \ |__) 
 //   \__, \__/ | \| .__/  |  |  \ \__/ \__,  |  \__/ |  \ 
@@ -83,21 +27,17 @@ private:
 DiffDriveNode::DiffDriveNode(){
     // ROS publisher & subscriber
     pub_odom_ = nh_.advertise<nav_msgs::Odometry>("wheel_odom", 50);
-    sub_cmd_ = nh_.subscribe("/cmd_vel", 1, &DiffDriveNode::cmd_cb, this);  
-
-    // driverConf_t config;
-    // ros::param::param<int>("~maxPos", (int&)config.maxPos, 100000);
-    // ros::param::param<int>("~minPos", (int&)tmp, -100000); config.minPos = (long)tmp;
-    // ros::param::param<int>("~maxVel", (int&)config.maxVel, 1000);
-    // ros::param::param<int>("~maxAcc", (int&)config.maxAcc, 200);
-    // ros::param::param<int>("~maxDec", (int&)config.maxDec, 200);
+    sub_cmd_ = nh_.subscribe("/cmd_vel", 1, &DiffDriveNode::cmd_cb, this);
+    srv_rst_odom_ = nh_.advertiseService("reset_odom", 
+                                                   &DiffDriveNode::rst_odom_cb,
+                                                   this);    
 
     int baudrate;
-    ros::param::param<int>("~baudRate", baudrate, 115200);
-    ros::param::param<std::string>("~serial_lDevice", ser_name_l_, "/dev/walker_motor_left");
-    ros::param::param<std::string>("~serial_rDevice", ser_name_r_, "/dev/walker_motor_right");
-    ros::param::param<double>("~wheelWidth", wheel_radius_, 0.105);
-    ros::param::param<double>("~wheelDistance", wheel_dis_, 0.59);
+    ros::param::param<int>("~baud", baudrate, 115200);
+    ros::param::param<std::string>("~portL", ser_name_l_, "/dev/walker_motor_left");
+    ros::param::param<std::string>("~portR", ser_name_r_, "/dev/walker_motor_right");
+    ros::param::param<double>("~whlRadius", wheel_radius_, 0.105);
+    ros::param::param<double>("~whlDistance", wheel_dis_, 0.59);
     ros::param::param<double>("~gearRatio", gear_ratio_, 14.0);
 
     // Timer parameters
@@ -112,15 +52,28 @@ DiffDriveNode::DiffDriveNode(){
     timer_ = nh_.createTimer(ros::Duration(timer_interval_), &DiffDriveNode::timer_cb, this);
 }
 
+bool DiffDriveNode::rst_odom_cb(std_srvs::TriggerRequest& req, std_srvs::TriggerResponse& resp) {
+    robot_x_ = 0;
+    robot_y_ = 0;
+    robot_theta_ = 0;
+    is_first_odom = true;
+
+    string message = "Reset wheel odometry.";
+    cout << COLOR_GREEN << message << COLOR_NC << endl;
+    resp.success = true; // boring, but valid response info
+    resp.message = message;
+    return true;
+}
+
 void DiffDriveNode::send_motor_cmd(serial::Serial* ser, const char* cmd){
-    string cmd_plus_end = string(cmd) + "\n\r"; 
+    string cmd_plus_end = string(cmd) + "\n"; 
     ser->write(cmd_plus_end);
     usleep(100);
     ser->readline();
 }
 
 int DiffDriveNode::ask_motor_feedback(serial::Serial* ser, const char* cmd){
-    string cmd_plus_end = string(cmd) + "\n\r"; 
+    string cmd_plus_end = string(cmd) + "\n"; 
     ser->write(cmd_plus_end);
     usleep(100);
     return atoi(ser->readline().c_str());
@@ -133,7 +86,6 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
         last_cmd_time_ = ros::Time::now();
         // cout << "Stop robot automatically by watchdog counter." << endl;
     }
-
     double     v = cmd_msg_.linear.x;
     double omega = cmd_msg_.angular.z;
     double desire_rpml = (2 * v - omega * wheel_dis_) / (2 * wheel_radius_) * 60 * gear_ratio_;
@@ -145,21 +97,22 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     send_motor_cmd(ser_l_, cmd);
     sprintf(cmd, "V%d", -(int)desire_rpmr);     // notice the "minus" note due to right motor setup
     send_motor_cmd(ser_r_, cmd);
-    real_rpml_ = ask_motor_feedback(ser_l_, "POS");
-    real_rpmr_ = ask_motor_feedback(ser_r_, "POS");
 
-    cout << "rmp_l: " << desire_rpml << ", rmp_r: " << desire_rpmr << endl;
-    cout << "real_l: " << real_rpml_ << ", real_r: " << real_rpmr_ << endl;
+    pulsel_ = ask_motor_feedback(ser_l_, "POS");
+    pulser_ = ask_motor_feedback(ser_r_, "POS");
+    
 
     // Wheel odometry process
     if(is_first_odom) {
         is_first_odom = false;
         robot_x_ = robot_y_ = robot_theta_ = 0.0;
     }
-    int delta_rpml = real_rpml_ - last_real_rpml_;
-    int delta_rpmr = real_rpmr_ - last_real_rpmr_;
-    double vl = (double)delta_rpml / 41400.0 * 2 * M_PI / timer_interval_;
-    double vr = -(double)delta_rpmr / 41400.0 * 2 * M_PI / timer_interval_;     // notice the "minus"
+    double vl = (double)(pulsel_ - last_pulsel_) / 41400.0 * 2 * M_PI / timer_interval_;
+    double vr = -(double)(pulser_ - last_pulser_) / 41400.0 * 2 * M_PI / timer_interval_;     // notice the "minus"
+    cout << "rmp_l: " << desire_rpml << ", rmp_r: " << desire_rpmr << endl;
+    cout << "real_rpm_l: " <<  vl << ", real_rpm_r: " << vr << endl;
+    // cout << "pulse_l: " << pulsel_ << ", pulse_r: " << pulser_ << endl;
+
     double real_v = wheel_radius_ / 2 * (vr + vl);
     double real_omega = wheel_radius_ / wheel_dis_ * (vr - vl);
     
@@ -187,8 +140,8 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     odom.pose.pose.orientation = odom_quat;
     pub_odom_.publish(odom);
 
-    last_real_rpml_ = real_rpml_;
-    last_real_rpmr_ = real_rpmr_;
+    last_pulsel_ = pulsel_;
+    last_pulser_ = pulser_;
 } 
 
 void DiffDriveNode::cmd_cb(const geometry_msgs::Twist& msg) {
@@ -199,12 +152,12 @@ void DiffDriveNode::cmd_cb(const geometry_msgs::Twist& msg) {
 void DiffDriveNode::motors_init(int baudrate) {
     // Motors port init
     try {
-        ser_l_ = new serial::Serial(ser_name_l_, baudrate, serial::Timeout::simpleTimeout(1000));
+        ser_l_ = new serial::Serial(ser_name_l_, baudrate, serial::Timeout::simpleTimeout(timer_interval_*1000));
     } catch(exception & e){
         cout << COLOR_RED << "Can not open serial port: " << ser_name_l_ << ", please check the port is available." << COLOR_NC << endl;
     }
     try {
-        ser_r_ = new serial::Serial(ser_name_r_, baudrate, serial::Timeout::simpleTimeout(1000));
+        ser_r_ = new serial::Serial(ser_name_r_, baudrate, serial::Timeout::simpleTimeout(timer_interval_*1000));
     } catch(exception & e){
         cout << COLOR_RED << "Can not open serial port: " << ser_name_r_ << ", please check the port is available." << COLOR_NC << endl;
         exit(-1);
