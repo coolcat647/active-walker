@@ -27,9 +27,13 @@ models/
 *.caffemodel
 train-*
 
+# Processing data files
+*.vlw
+
 # ROS related
 *.bag
 *.pcd
+*.bag
 build/
 install/
 devel/
