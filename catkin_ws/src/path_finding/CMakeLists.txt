@@ -112,6 +112,11 @@ catkin_package(
 #  DEPENDS system_lib
 )
 
+catkin_package(
+    INCLUDE_DIRS src
+    LIBRARIES libastar
+)
+
 ###########
 ## Build ##
 ###########
@@ -153,11 +158,14 @@ include_directories(
 #   ${catkin_LIBRARIES}
 # )
 
-add_library(Astar src/Astar.cpp)
-target_link_libraries(Astar ${catkin_LIBRARIES})
+add_library(libastar src/Astar.cpp)
+target_link_libraries(libastar ${catkin_LIBRARIES})
 
 add_executable(fake_map_node src/fake_map.cpp)
-target_link_libraries(fake_map_node Astar ${catkin_LIBRARIES})
+target_link_libraries(fake_map_node libastar ${catkin_LIBRARIES})
+
+add_executable(path_finding_node src/path_finding_node.cpp)
+target_link_libraries(path_finding_node libastar ${catkin_LIBRARIES})
 
 #############
 ## Install ##
@@ -178,6 +186,13 @@ target_link_libraries(fake_map_node Astar ${catkin_LIBRARIES})
 # install(TARGETS ${PROJECT_NAME}_node
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
+
+# install(TARGETS libastar DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION})
+install(DIRECTORY src/
+    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+    FILES_MATCHING PATTERN "*.h"
+    PATTERN ".svn" EXCLUDE
+)
 
 ## Mark libraries for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_libraries.html

@@ -91,7 +91,6 @@ void FakeMapNode::gauss_filter(vector<int8_t> &vec, int width, int height, int i
         }
     }
 
-    
     // Apply filter to the input      
     for(int y = -bound; y <= bound; y++) 
         for (int x = -bound; x <= bound; x++) {
@@ -103,21 +102,23 @@ void FakeMapNode::gauss_filter(vector<int8_t> &vec, int width, int height, int i
         }
 } 
 
-int cnt=0;
 void FakeMapNode::timer_cb(const ros::TimerEvent& event){
     std::fill(map_msg_.data.begin(), map_msg_.data.end(), 0);
-    for (int i = 0; i < 50; ++i)
+    for (int i = 0; i < 40; ++i)
         gauss_filter(map_msg_.data, map_msg_.info.width, map_msg_.info.height, \
                     rand() % (map_msg_.info.width * map_msg_.info.height), 7, 100);
 
-
-    // map_msg_.data[mapinfo_.height/2*mapinfo_.width - mapinfo_.width/2] = 127;
     map_msg_.header.stamp = ros::Time::now();
     pub_map_.publish(map_msg_);
 
-    if(++cnt >= 10) ros::shutdown();
     nav_msgs::Path result_path;
-    bool flag_success = solver_.solve_ros(&map_msg_, &result_path, 0, mapinfo_.width * mapinfo_.height -10, 10.0);
+    result_path.header.frame_id = map_msg_.header.frame_id;
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+
+    bool flag_success = solver_.solve_ros(&map_msg_, &result_path, 0, mapinfo_.width * mapinfo_.height -1, 10.0);
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
+
     pub_path_.publish(result_path);
 }
 
@@ -129,10 +130,8 @@ void sigint_cb(int sig) {
 
 
 int main(int argc, char *argv[]) {
-    /* code */
     ros::init(argc, argv, "fake_map_node");   
     FakeMapNode node;
-    // node.run();
     signal(SIGINT, sigint_cb);
     ros::spin();
     return 0;

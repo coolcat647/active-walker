@@ -122,7 +122,6 @@ bool Astar::Solver::solve_ros(nav_msgs::OccupancyGrid* map_msg, nav_msgs::Path* 
         }
     }
     
-    path->header.frame_id = "map";
     path->header.stamp = ros::Time::now();
     return flag_success_;
 }
@@ -137,7 +136,9 @@ bool Astar::Solver::is_collision(Grid2D grid) {
 
     // Check collision
     int map_idx = grid.y * width + (grid.x % width);
-    if(map_msg_->data[map_idx] > 60)  // due to the second large gaussian value*100
+
+    // Due to (the second large gaussian value*100) || (prefer not to go to unknown space)
+    if(map_msg_->data[map_idx] > 60 || map_msg_->data[map_idx] < 0)  
         return true;
     else
         return false;
