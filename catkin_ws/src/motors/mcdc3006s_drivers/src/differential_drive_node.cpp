@@ -38,7 +38,7 @@ DiffDriveNode::DiffDriveNode(){
     ros::param::param<std::string>("~portR", ser_name_r_, "/dev/walker_motor_right");
     ros::param::param<double>("~whlRadius", wheel_radius_, 0.105);
     ros::param::param<double>("~whlDistance", wheel_dis_, 0.59);
-    ros::param::param<double>("~gearRatio", gear_ratio_, 14.0);
+    ros::param::param<double>("~gearRatio", gear_ratio_, 13.69863); // 14.0
 
     // Timer parameters
     ros::param::param<double>("~timerInterval", timer_interval_, 0.1);
@@ -47,7 +47,8 @@ DiffDriveNode::DiffDriveNode(){
     motors_init(baudrate);
 
     signal(SIGINT, sigint_cb);
-
+    cout <<setprecision(3) << setiosflags(ios::fixed);
+    
     // Timer setup
     timer_ = nh_.createTimer(ros::Duration(timer_interval_), &DiffDriveNode::timer_cb, this);
 }
@@ -79,6 +80,8 @@ int DiffDriveNode::ask_motor_feedback(serial::Serial* ser, const char* cmd){
     return atoi(ser->readline().c_str());
 }
 
+double err_rpm_r = 0, err_rpm_l = 0;
+
 void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     // Watchdog for robot safety
     if(ros::Time::now() - last_cmd_time_ >= ros::Duration(wtd_interval_)){
@@ -88,8 +91,8 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     }
     double     v = cmd_msg_.linear.x;
     double omega = cmd_msg_.angular.z;
-    double desire_rpml = (2 * v - omega * wheel_dis_) / (2 * wheel_radius_) * 60 * gear_ratio_;
-    double desire_rpmr = (2 * v + omega * wheel_dis_) / (2 * wheel_radius_) * 60 * gear_ratio_;
+    double desire_rpml = (2 * v - omega * wheel_dis_) / (2 * wheel_radius_) / M_PI / 2 * 60 * gear_ratio_;
+    double desire_rpmr = (2 * v + omega * wheel_dis_) / (2 * wheel_radius_) / M_PI / 2 * 60 * gear_ratio_;
 
     // Send cmd to motor & get motor pulse
     char cmd[15];
@@ -106,19 +109,52 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     if(is_first_odom) {
         is_first_odom = false;
         robot_x_ = robot_y_ = robot_theta_ = 0.0;
+        last_pulsel_ = pulsel_;
+        last_pulser_ = pulser_;
+
+        desire_robot_x_ = desire_robot_y_ = desire_robot_theta_ = 0.0;
     }
-    double vl = (double)(pulsel_ - last_pulsel_) / 41400.0 * 2 * M_PI / timer_interval_;
-    double vr = -(double)(pulser_ - last_pulser_) / 41400.0 * 2 * M_PI / timer_interval_;     // notice the "minus"
-    cout << "rmp_l: " << desire_rpml << ", rmp_r: " << desire_rpmr << endl;
-    cout << "real_rpm_l: " <<  vl << ", real_rpm_r: " << vr << endl;
-    // cout << "pulse_l: " << pulsel_ << ", pulse_r: " << pulser_ << endl;
+    // double vl = (double)(pulsel_ - last_pulsel_) / 41400.0 * 2 * M_PI / timer_interval_;
+    // double vr = -(double)(pulser_ - last_pulser_) / 41400.0 * 2 * M_PI / timer_interval_;     // notice the "minus"
+    double vl = (double)(pulsel_ - last_pulsel_) / 3000 / gear_ratio_ * 2 * M_PI / timer_interval_;
+    double vr = -(double)(pulser_ - last_pulser_) / 3000 / gear_ratio_ * 2 * M_PI / timer_interval_;     // notice the "minus"
+    
+    bool display_for_motor = true;
+    if(display_for_motor){
+        // cout << "motor -> desire (rpm_l, rpm_r): " << desire_rpml << ", " << desire_rpmr \
+        //         << "\nmotor ->   real (rpm_l, rpm_r): " <<  vl * gear_ratio_ * 60 / 2 / M_PI \
+        //         << ", " << vr * gear_ratio_ * 60 / 2 / M_PI << endl;
+    }else{
+        cout << "wheel -> desire (rpm_l, rpm_r): " << desire_rpml / gear_ratio_ \
+                << ", " << desire_rpmr / gear_ratio_ \
+                << "\nwheel ->   real (rpm_l, rpm_r): " <<  vl * 60 / 2 / M_PI \
+                << ", " << vr * 60 / 2 / M_PI << endl;
+    }
+    // double tmp_r = abs(desire_rpml - vl * gear_ratio_ * 60 / 2 / M_PI);
+    // double tmp_l = abs(desire_rpmr - vr * gear_ratio_ * 60 / 2 / M_PI);
+    // if(tmp_l > err_rpm_l && tmp_l < 10) {
+    //     err_rpm_l = tmp_l;
+    // }
+    // if(tmp_r > err_rpm_r && tmp_r < 10) {
+    //     err_rpm_r = tmp_r;
+    // }
+    // cout << "max err rpm_l, rpmr = " << err_rpm_l << ", " <<  err_rpm_r << endl;
 
     double real_v = wheel_radius_ / 2 * (vr + vl);
     double real_omega = wheel_radius_ / wheel_dis_ * (vr - vl);
     
+    // cout << "real (v, w) = " << real_v << ", " << real_omega << endl;
+
     robot_x_ += real_v * cos(robot_theta_) * timer_interval_;
     robot_y_ += real_v * sin(robot_theta_) * timer_interval_;
     robot_theta_ += real_omega * timer_interval_;
+
+    desire_robot_x_ += v * cos(desire_robot_theta_) * timer_interval_;
+    desire_robot_y_ += v * sin(desire_robot_theta_) * timer_interval_;
+    desire_robot_theta_ += omega * timer_interval_;
+
+    cout << "err_odom_x: " << desire_robot_x_ - robot_x_ << "err_odom_y: " << desire_robot_y_ - robot_y_ << endl;
+
 
     ros::Time current_time = ros::Time::now();
     geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(robot_theta_);

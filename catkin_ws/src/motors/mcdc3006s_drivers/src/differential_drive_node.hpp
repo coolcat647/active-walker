@@ -54,6 +54,7 @@ private:
     volatile int pulsel_, pulser_;
     volatile int last_pulsel_, last_pulser_;
     volatile double robot_x_, robot_y_, robot_theta_;
+    volatile double desire_robot_x_, desire_robot_y_, desire_robot_theta_;
 
     // Motor configure related
     string ser_name_l_;
@@ -61,6 +62,9 @@ private:
     double wheel_radius_;
     double wheel_dis_;
     double gear_ratio_;
+
+
+
 
     // Timer related
     double timer_interval_;                         // ROS Timer interval
