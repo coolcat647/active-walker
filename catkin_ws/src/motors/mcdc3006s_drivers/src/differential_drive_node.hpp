@@ -50,7 +50,7 @@ private:
     tf::TransformBroadcaster  odom_broadcaster_;
 
     // For odometry feedback
-    bool is_first_odom = true;
+    bool is_first_odom_ = true;
     volatile int pulsel_, pulser_;
     volatile int last_pulsel_, last_pulser_;
     volatile double robot_x_, robot_y_, robot_theta_;

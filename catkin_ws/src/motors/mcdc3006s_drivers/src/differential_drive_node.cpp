@@ -36,9 +36,9 @@ DiffDriveNode::DiffDriveNode(){
     ros::param::param<int>("~baud", baudrate, 115200);
     ros::param::param<std::string>("~portL", ser_name_l_, "/dev/walker_motor_left");
     ros::param::param<std::string>("~portR", ser_name_r_, "/dev/walker_motor_right");
-    ros::param::param<double>("~whlRadius", wheel_radius_, 0.105);
-    ros::param::param<double>("~whlDistance", wheel_dis_, 0.59);
-    ros::param::param<double>("~gearRatio", gear_ratio_, 13.69863); // 14.0
+    ros::param::param<double>("~whlRadius", wheel_radius_, 0.0625); // 0.105
+    ros::param::param<double>("~whlDistance", wheel_dis_, 0.6);     // 0.59
+    ros::param::param<double>("~gearRatio", gear_ratio_, 14.0); // 13.69863
 
     // Timer parameters
     ros::param::param<double>("~timerInterval", timer_interval_, 0.1);
@@ -57,7 +57,7 @@ bool DiffDriveNode::rst_odom_cb(std_srvs::TriggerRequest& req, std_srvs::Trigger
     robot_x_ = 0;
     robot_y_ = 0;
     robot_theta_ = 0;
-    is_first_odom = true;
+    is_first_odom_ = true;
 
     string message = "Reset wheel odometry.";
     cout << COLOR_GREEN << message << COLOR_NC << endl;
@@ -106,8 +106,8 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     
 
     // Wheel odometry process
-    if(is_first_odom) {
-        is_first_odom = false;
+    if(is_first_odom_) {
+        is_first_odom_ = false;
         robot_x_ = robot_y_ = robot_theta_ = 0.0;
         last_pulsel_ = pulsel_;
         last_pulser_ = pulser_;
@@ -119,11 +119,11 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     double vl = (double)(pulsel_ - last_pulsel_) / 3000 / gear_ratio_ * 2 * M_PI / timer_interval_;
     double vr = -(double)(pulser_ - last_pulser_) / 3000 / gear_ratio_ * 2 * M_PI / timer_interval_;     // notice the "minus"
     
-    bool display_for_motor = true;
+    bool display_for_motor = false;
     if(display_for_motor){
-        // cout << "motor -> desire (rpm_l, rpm_r): " << desire_rpml << ", " << desire_rpmr \
-        //         << "\nmotor ->   real (rpm_l, rpm_r): " <<  vl * gear_ratio_ * 60 / 2 / M_PI \
-        //         << ", " << vr * gear_ratio_ * 60 / 2 / M_PI << endl;
+        cout << "motor -> desire (rpm_l, rpm_r): " << desire_rpml << ", " << desire_rpmr \
+                << "\nmotor ->   real (rpm_l, rpm_r): " <<  vl * gear_ratio_ * 60 / 2 / M_PI \
+                << ", " << vr * gear_ratio_ * 60 / 2 / M_PI << endl;
     }else{
         cout << "wheel -> desire (rpm_l, rpm_r): " << desire_rpml / gear_ratio_ \
                 << ", " << desire_rpmr / gear_ratio_ \
@@ -153,7 +153,7 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     desire_robot_y_ += v * sin(desire_robot_theta_) * timer_interval_;
     desire_robot_theta_ += omega * timer_interval_;
 
-    cout << "err_odom_x: " << desire_robot_x_ - robot_x_ << "err_odom_y: " << desire_robot_y_ - robot_y_ << endl;
+    // cout << "err_odom_x: " << desire_robot_x_ - robot_x_ << "err_odom_y: " << desire_robot_y_ - robot_y_ << endl;
 
 
     ros::Time current_time = ros::Time::now();

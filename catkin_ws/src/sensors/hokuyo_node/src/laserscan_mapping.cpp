@@ -14,19 +14,19 @@ using namespace std;
 nav_msgs::OccupancyGrid* laser_map;
 ros::Publisher pub_map;
 
-double kgaussian_kernel3[] = {
+int8_t kgaussian_kernel3[] = {
     37, 61, 37, 
     61, 100,61, 
     37, 61, 37
 };
-double kgaussian_kernel5[] = {
+int8_t kgaussian_kernel5[] = {
     2,  8,  14, 8,  2,  
     8,  37, 61, 37, 8,  
     14, 61, 100,61, 14, 
     8,  37, 61, 37, 8,  
     2,  8,  14, 8,  2
 };
-double kgaussian_kernel7[] = {
+int8_t kgaussian_kernel7[] = {
     0,  0,  1,  1,  1,  0,  0,  
     0,  2,  8,  14, 8,  2,  0,  
     1,  8,  37, 61, 37, 8,  1,  
@@ -35,7 +35,7 @@ double kgaussian_kernel7[] = {
     0,  2,  8,  14, 8,  2,  0,  
     0,  0,  1,  1,  1,  0,  0
 };
-double kgaussian_kernel9[] = {
+int8_t kgaussian_kernel9[] = {
     0,  0,  0,  0,  0,  0,  0,  0,  0,  
     0,  0,  0,  1,  1,  1,  0,  0,  0,  
     0,  0,  2,  8,  14, 8,  2,  0,  0,  
@@ -51,7 +51,7 @@ double kgaussian_kernel9[] = {
 void gauss_filter(vector<int8_t> &vec, int width, int height, int idx, int kernel_size, int peak_value) { 
     int bound = kernel_size/2;
 
-    double* kernel_table;
+    int8_t* kernel_table;
     switch(kernel_size){
         case 3:
             kernel_table = kgaussian_kernel3; break;
@@ -81,10 +81,9 @@ void gauss_filter(vector<int8_t> &vec, int width, int height, int idx, int kerne
     for(int y = -bound; y <= bound; y++) 
         for (int x = -bound; x <= bound; x++) {
             int op_idx = idx + x + width*y;
-            if(vec[op_idx] < 0) continue;
-            if(op_idx < 0 || op_idx > width * height) continue;     // upper and bottom bound
-            else if(abs(op_idx % width - idx % width) > bound) continue; // left and right bound
-            // int result = (int)vec[op_idx] + kernel[y + bound][x + bound];
+            if(vec[op_idx] < 0) continue;                                 // do not apply filter out of laser range
+            if(op_idx < 0 || op_idx > width * height) continue;           // upper and bottom bound
+            else if(abs(op_idx % width - idx % width) > bound) continue;  // left and right bound
             int result = vec[op_idx] + kernel_table[(y + bound)*kernel_size + x + bound];
             vec[op_idx] = (result > peak_value)? peak_value: result;
         }

@@ -5,6 +5,11 @@ The repo is prepared for the active walker project for elders or people in mobil
 
 
 ## Setup 
+a. Compile and build all packages
+```bash
+$ cd active-walker/catkin_ws
+$ catkin_make -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=/usr/bin/gcc-6
+```
 
 ___
 
