@@ -9,11 +9,21 @@ project(active_walker)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   rospy
+  roscpp
+  sensor_msgs
+  geometry_msgs
+  tf
+  cv_bridge
+  std_msgs
+  message_filters
+  laser_geometry
+  image_transport
 )
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
-
+find_package(Eigen3 REQUIRED)
+find_package(OpenCV REQUIRED)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -101,10 +111,10 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
+ # INCLUDE_DIRS include
 #  LIBRARIES active_walker
-#  CATKIN_DEPENDS rospy
-#  DEPENDS system_lib
+ # CATKIN_DEPENDS rospy
+ DEPENDS system_lib Eigen3 OpenCV
 )
 
 ###########
@@ -116,6 +126,7 @@ catkin_package(
 include_directories(
 # include
   ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -147,6 +158,13 @@ include_directories(
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
+
+add_executable(show_scan_image_node src/show_scan_image_node.cpp)
+target_link_libraries(show_scan_image_node
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+  ${EIGEN3_LIBRARIES}
+)
 
 #############
 ## Install ##
