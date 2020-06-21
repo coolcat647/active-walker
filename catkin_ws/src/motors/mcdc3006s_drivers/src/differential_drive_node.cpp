@@ -51,6 +51,7 @@ DiffDriveNode::DiffDriveNode(){
     
     // Timer setup
     timer_ = nh_.createTimer(ros::Duration(timer_interval_), &DiffDriveNode::timer_cb, this);
+    cout << COLOR_GREEN << "Differential drive node is ready." << COLOR_NC << endl;
 }
 
 bool DiffDriveNode::rst_odom_cb(std_srvs::TriggerRequest& req, std_srvs::TriggerResponse& resp) {
@@ -70,14 +71,38 @@ void DiffDriveNode::send_motor_cmd(serial::Serial* ser, const char* cmd){
     string cmd_plus_end = string(cmd) + "\n"; 
     ser->write(cmd_plus_end);
     usleep(100);
-    ser->readline();
+    try{
+        ser->readline();
+    } catch(serial::SerialException& e){
+        cout << COLOR_RED << "Cannot read the response from motor controller, emergency stop" << COLOR_NC << endl;
+        emergency_stop();
+        exit(-1);
+    }
 }
 
 int DiffDriveNode::ask_motor_feedback(serial::Serial* ser, const char* cmd){
+    string ret_str;
     string cmd_plus_end = string(cmd) + "\n"; 
     ser->write(cmd_plus_end);
     usleep(100);
-    return atoi(ser->readline().c_str());
+
+    // Note that there is a useless emergency_stop because the serial port error is showing it
+    // cannot write/read serial port at that time. We cannot send any zero-velocity command to it.
+    // TODO: Solve the critical problem from hardware.
+    try{
+        ret_str = ser->readline();
+    } catch(serial::SerialException& e){
+        cout << COLOR_RED << "Cannot read the response from motor controller, emergency stop" << COLOR_NC << endl;
+        emergency_stop();
+        exit(-1);
+    }
+
+    return atoi(ret_str.c_str());
+}
+
+void DiffDriveNode::emergency_stop(void) {
+    ser_l_->write("V0\r\n");
+    ser_r_->write("V0\r\n");
 }
 
 double err_rpm_r = 0, err_rpm_l = 0;

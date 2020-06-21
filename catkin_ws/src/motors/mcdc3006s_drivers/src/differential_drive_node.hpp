@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <unistd.h>
 #include <iomanip>
 #include "serial/serial.h"
 
@@ -32,6 +33,7 @@ public:
     serial::Serial* ser_r_;
 
 private:
+    void emergency_stop(void);
     void motors_init(int baudrate);
     // ROS timer callback
     void timer_cb(const ros::TimerEvent& event);
