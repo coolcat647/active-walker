@@ -1,5 +1,6 @@
 *~
 *.ipynb_checkpoints/
+__pycache__
 *.png
 *.pyc
 *.swp
@@ -18,6 +19,7 @@
 *.cu
 *jpg
 *.zip
+*.tar.gz
 models/
 !./figures/*.jpg
 !./figures/*.png
@@ -26,6 +28,9 @@ models/
 *.pth
 *.caffemodel
 train-*
+*.wts
+*.weights
+*.engine
 
 # Processing data files
 *.vlw

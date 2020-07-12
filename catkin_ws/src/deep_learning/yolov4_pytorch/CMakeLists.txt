@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(active_walker)
+project(yolov4_pytorch)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -8,28 +8,18 @@ project(active_walker)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  rospy
-  roscpp
-  sensor_msgs
   geometry_msgs
-  visualization_msgs
-  tf
-  cv_bridge
+  rospy
+  sensor_msgs
   std_msgs
-  message_filters
-  laser_geometry
-  image_transport
-  pcl_ros
-  pcl_conversions
-
-  # Custom msg & srv
-  walker_msgs
+  visualization_msgs
+  cv_bridge
+  # message_generation
 )
 
 ## System dependencies are found with CMake's conventions
-# find_package(Boost REQUIRED COMPONENTS system)
-find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED)
+find_package(Boost REQUIRED COMPONENTS system)
+
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -62,16 +52,15 @@ find_package(OpenCV REQUIRED)
 
 ## Generate messages in the 'msg' folder
 # add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
+  # FILES
+  # BBox2D.msg
+  # Detection2D.msg
 # )
 
 ## Generate services in the 'srv' folder
 # add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
+  # FILES
+  # Detection2DTrigger.srv
 # )
 
 ## Generate actions in the 'action' folder
@@ -83,8 +72,8 @@ find_package(OpenCV REQUIRED)
 
 ## Generate added messages and services with any dependencies listed here
 # generate_messages(
-#   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
+  # DEPENDENCIES
+  # geometry_msgs sensor_msgs std_msgs visualization_msgs yolov4_pytorch
 # )
 
 ################################################
@@ -117,10 +106,10 @@ find_package(OpenCV REQUIRED)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
- # INCLUDE_DIRS include
-#  LIBRARIES active_walker
- # CATKIN_DEPENDS rospy
- DEPENDS system_lib Eigen3 OpenCV
+#  INCLUDE_DIRS include
+#  LIBRARIES yolov4_pytorch
+#  CATKIN_DEPENDS geometry_msgs rospy sensor_msgs std_msgs visualization_msgs
+#  DEPENDS system_lib
 )
 
 ###########
@@ -132,12 +121,11 @@ catkin_package(
 include_directories(
 # include
   ${catkin_INCLUDE_DIRS}
-  ${EIGEN3_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/active_walker.cpp
+#   src/${PROJECT_NAME}/yolov4_pytorch.cpp
 # )
 
 ## Add cmake target dependencies of the library
@@ -148,7 +136,7 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/active_walker_node.cpp)
+# add_executable(${PROJECT_NAME}_node src/yolov4_pytorch_node.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -164,20 +152,6 @@ include_directories(
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
-
-add_executable(show_scan_image_node src/show_scan_image_node.cpp)
-target_link_libraries(show_scan_image_node
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-  ${EIGEN3_LIBRARIES}
-)
-
-add_executable(show_scan_image_node_old src/show_scan_image_node_old.cpp)
-target_link_libraries(show_scan_image_node_old
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-  ${EIGEN3_LIBRARIES}
-)
 
 #############
 ## Install ##
@@ -226,7 +200,7 @@ target_link_libraries(show_scan_image_node_old
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_active_walker.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_yolov4_pytorch.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()
