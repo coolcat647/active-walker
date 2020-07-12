@@ -24,7 +24,7 @@
     <!-- Camera Laserscan calibration result: -->
     <!-- 5.03168100114148e-02 9.5209630006627572e-02 -7.872196022398195e-02 -0.4931572  0.5025891  -0.4968664  0.5072711 -->
     <node name="laser2camera" pkg="tf" type="static_transform_publisher" 
-            args="5.03168100114148e-02 0.0 -7.872196022398195e-02 -0.4931572  0.5025891  -0.4968664  0.5072711 
+            args="1.503168100114148e-01 9.5209630006627572e-02 -7.872196022398195e-02 -0.4931572  0.5025891  -0.4968664  0.5072711 
             /laser_link /camera_link 20"/>
     <node name="laser2base" pkg="tf" type="static_transform_publisher" 
             args="-0.41 0 -0.50 0  0  0  1 
