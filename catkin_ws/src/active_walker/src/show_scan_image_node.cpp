@@ -163,7 +163,6 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     }
     rot_cam2laser_ = tf::Matrix3x3(stamped_transform.getRotation());
     tras_cam2laser_ = stamped_transform.getOrigin();
-    tras_cam2laser_[0] += 0.1;  // manually shifting
     // cout << "tras_cam2laser:\n" << tras_cam2laser_[0] << ", " << tras_cam2laser_[1] << ", " << tras_cam2laser_[2] << endl;
 
     // Prepare intrinsic matrix
