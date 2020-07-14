@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <!-- Yolo v4 detection -->
+    <node name="yolov4_node" pkg="yolov4_pytorch" type="detection_node.py" required="true" /> 
+
+    <!-- Combine laserscan and image detection result -->
+    <node name="scan_image_combine_node" pkg="active_walker" type="scan_image_combine_node" required="true" output="screen" />
+
+</launch>

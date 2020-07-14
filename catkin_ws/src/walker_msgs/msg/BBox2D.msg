@@ -1,7 +1,7 @@
-int64 id
+int32 id
 string class_name
-float64 score
+float32 score
 
 geometry_msgs/Pose2D center
-float64 size_x
-float64 size_y
+float32 size_x
+float32 size_y

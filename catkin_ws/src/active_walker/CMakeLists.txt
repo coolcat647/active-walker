@@ -165,8 +165,8 @@ include_directories(
 #   ${catkin_LIBRARIES}
 # )
 
-add_executable(show_scan_image_node src/show_scan_image_node.cpp)
-target_link_libraries(show_scan_image_node
+add_executable(scan_image_combine_node src/scan_image_combine_node.cpp)
+target_link_libraries(scan_image_combine_node
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
   ${EIGEN3_LIBRARIES}

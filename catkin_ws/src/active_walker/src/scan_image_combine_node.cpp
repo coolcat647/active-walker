@@ -15,8 +15,10 @@
 #include <cv_bridge/cv_bridge.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
-// Custom srv
+// Custom msg & srv
 #include <walker_msgs/Detection2DTrigger.h>
+#include <walker_msgs/Det3D.h>
+#include <walker_msgs/Det3DArray.h>
 
 // Message filter
 #include <message_filters/subscriber.h>
@@ -82,11 +84,13 @@ class ObjInfo {
 public:
     ObjInfo(){
         cloud = PointCloudXYZPtr(new PointCloudXYZ);
+        radius = 0.0;
     }
     walker_msgs::BBox2D box;
     PointCloudXYZPtr cloud;
     geometry_msgs::Point location;
-    geometry_msgs::Point dimension;
+    double radius;
+    // geometry_msgs::Point dimension;
 };
 
 
@@ -96,9 +100,12 @@ public:
     void img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_ptr, const sensor_msgs::LaserScan::ConstPtr &laser_msg_ptr);
     void separate_outlier_points(PointCloudXYZPtr cloud_in, PointCloudXYZPtr cloud_out);
     bool is_interest_class(string class_name);
-
+    tf::Vector3 point_pixel2laser(double pixel_x, double pixel_y, double depth_from_laser);
+    cv::Point2d point_laser2pixel(double x_from_laser, double y_from_laser, double z_from_laser);
 
     // Transformation
+    tf::Matrix3x3 rot_laser2cam_;
+    tf::Vector3 tras_laser2cam_;
     tf::Matrix3x3 rot_cam2laser_;
     tf::Vector3 tras_cam2laser_;
     cv::Mat K_;
@@ -111,6 +118,7 @@ public:
     ros::Publisher pub_combined_image_;
     ros::Publisher pub_marker_array_;
     ros::Publisher pub_colored_pc_;
+    ros::Publisher pub_detection3d_;
     ros::ServiceClient yolov4_detect_;  // ROS Service client
     // Message filters
     message_filters::Subscriber<sensor_msgs::LaserScan> scan_sub_;
@@ -136,14 +144,15 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     pub_combined_image_ = nh_.advertise<sensor_msgs::Image>("debug_reprojection", 1);
     pub_marker_array_ = nh.advertise<visualization_msgs::MarkerArray>("obj_marker", 1);
     pub_colored_pc_ = nh.advertise<sensor_msgs::PointCloud2>("colored_pc", 1);
+    pub_detection3d_ = nh.advertise<walker_msgs::Det3DArray>("detection_result", 1);
     scan_sub_.subscribe(nh_, scan_topic, 1);
     image_sub_.subscribe(nh_, img_topic, 1);
     sync_.reset(new MySynchronizer(MySyncPolicy(10), image_sub_, scan_sub_));
     sync_->registerCallback(boost::bind(&ScanImageCombineNode::img_scan_cb, this, _1, _2));
 
     // ROS service client
-    ROS_INFO_STREAM("Wait for yolo detection service in 5 seconds...");
-    if(!ros::service::waitForService(yolo_srv_name, ros::Duration(5.0))) {
+    ROS_INFO_STREAM("Wait for yolo detection service in 10 seconds...");
+    if(!ros::service::waitForService(yolo_srv_name, ros::Duration(10.0))) {
         ROS_ERROR("Cannot get the detection service: %s. Aborting...", yolo_srv_name.c_str());
         exit(-1);
     }
@@ -153,7 +162,7 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     tf::StampedTransform stamped_transform;
     try{
         tf_listener_.waitForTransform("camera_link", "laser_link",
-                                    ros::Time(0), ros::Duration(5.0));
+                                    ros::Time(0), ros::Duration(10.0));
         tf_listener_.lookupTransform("camera_link", "laser_link", 
                                     ros::Time(0), stamped_transform);
     }
@@ -161,16 +170,18 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
         ROS_ERROR("Cannot get TF from camera to laserscan: %s. Aborting...", ex.what());
         exit(-1);
     }
-    rot_cam2laser_ = tf::Matrix3x3(stamped_transform.getRotation());
-    tras_cam2laser_ = stamped_transform.getOrigin();
-    // cout << "tras_cam2laser:\n" << tras_cam2laser_[0] << ", " << tras_cam2laser_[1] << ", " << tras_cam2laser_[2] << endl;
+    rot_laser2cam_ = tf::Matrix3x3(stamped_transform.getRotation());
+    tras_laser2cam_ = stamped_transform.getOrigin();
+    // cout << "tras_cam2laser:\n" << tras_laser2cam_[0] << ", " << tras_laser2cam_[1] << ", " << tras_laser2cam_[2] << endl;
+    rot_cam2laser_ = rot_laser2cam_.transpose();
+    tras_cam2laser_ = rot_cam2laser_ * tras_laser2cam_ * (-1);
 
     // Prepare intrinsic matrix
     boost::shared_ptr<sensor_msgs::CameraInfo const> caminfo_ptr;
     double fx, fy, cx, cy;
     double k1, k2, p1, p2;
-    ROS_INFO_STREAM("Wait for camera_info message in 5 seconds");
-    caminfo_ptr = ros::topic::waitForMessage<sensor_msgs::CameraInfo>(caminfo_topic, ros::Duration(5.0));
+    ROS_INFO_STREAM("Wait for camera_info message in 10 seconds");
+    caminfo_ptr = ros::topic::waitForMessage<sensor_msgs::CameraInfo>(caminfo_topic, ros::Duration(10.0));
     if(caminfo_ptr != NULL){       
         fx = caminfo_ptr->P[0];
         fy = caminfo_ptr->P[5];
@@ -203,9 +214,9 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
 
 
 void ScanImageCombineNode::separate_outlier_points(PointCloudXYZPtr cloud_in, PointCloudXYZPtr cloud_out) {
-    // Copy cloud_in to pc_copied
-    PointCloudXYZPtr pc_copied(new PointCloudXYZ);
-    pcl::copyPointCloud(*cloud_in, *pc_copied);
+    // // Copy cloud_in to pc_copied
+    // PointCloudXYZPtr pc_copied(new PointCloudXYZ);
+    // pcl::copyPointCloud(*cloud_in, *pc_copied);
 
     // Euclidean Cluster Extraction
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
@@ -213,7 +224,7 @@ void ScanImageCombineNode::separate_outlier_points(PointCloudXYZPtr cloud_in, Po
     std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<pcl::PointXYZ> euler_extractor;
     euler_extractor.setClusterTolerance(0.2);
-    euler_extractor.setMinClusterSize(3);
+    euler_extractor.setMinClusterSize(1);
     euler_extractor.setMaxClusterSize(100);  // need to check the max pointcloud size of each object
     euler_extractor.setSearchMethod(tree);
     euler_extractor.setInputCloud(cloud_in);
@@ -235,7 +246,6 @@ void ScanImageCombineNode::separate_outlier_points(PointCloudXYZPtr cloud_in, Po
     }
     idx_closest_cloud = arg_min(candidates);
 
-    // Remove outlier
     pcl::PointIndices::Ptr inliers_ptr(new pcl::PointIndices(cluster_indices[idx_closest_cloud]));
     PointCloudXYZPtr cloud_extracted(new PointCloudXYZ);
     pcl::ExtractIndices<pcl::PointXYZ> extractor;
@@ -244,11 +254,14 @@ void ScanImageCombineNode::separate_outlier_points(PointCloudXYZPtr cloud_in, Po
     extractor.setNegative(false);
     extractor.filter(*cloud_extracted);
 
+    // Remove outlier
     pcl::RadiusOutlierRemoval<pcl::PointXYZ> outrem;
     outrem.setInputCloud(cloud_extracted);
     outrem.setRadiusSearch(0.2);
     outrem.setMinNeighborsInRadius(5);
     outrem.filter(*(cloud_out));
+
+    pcl::copyPointCloud(*cloud_in, *cloud_out);
 
     // pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;   
     // sor.setInputCloud(cloud_in);
@@ -264,6 +277,40 @@ bool ScanImageCombineNode::is_interest_class(string class_name){
             return true;
     }
     return false;
+}
+
+
+tf::Vector3 ScanImageCombineNode::point_pixel2laser(double pixel_x, double pixel_y, double depth_from_laser) {
+    cv::Mat cv_pt = (Mat_<double>(3, 1) << pixel_x, pixel_y, 1.0);
+    
+    // Transform to camera frame
+    cv::Mat pt_camframe = K_.inv() * cv_pt * depth_from_laser;
+
+    // Transform to laser frame
+    tf::Vector3 pt_laserframe = tras_cam2laser_ + rot_cam2laser_ * tf::Vector3(pt_camframe.at<double>(0, 0), 
+                                                                                pt_camframe.at<double>(1, 0),
+                                                                                pt_camframe.at<double>(2, 0));
+    return pt_laserframe;
+}
+
+
+cv::Point2d ScanImageCombineNode::point_laser2pixel(double x_from_laser, double y_from_laser, double z_from_laser) {
+    // Transform to camera frame
+    tf::Vector3 pt_laserframe(x_from_laser, y_from_laser, z_from_laser); 
+    tf::Vector3 pt_camframe = rot_laser2cam_ * pt_laserframe + tras_laser2cam_;
+    if(pt_camframe.getZ() <= 0.0) // points behind ego
+        return cv::Point2d(-1, -1);
+
+    // Normalization: z --> 1
+    pt_camframe.setX(pt_camframe.getX() / pt_camframe.getZ());
+    pt_camframe.setY(pt_camframe.getY() / pt_camframe.getZ());
+    pt_camframe.setZ(1.0);
+
+    // Trasform to pixel frame
+    cv::Mat uv = K_ * (cv::Mat_<double>(3, 1) << pt_camframe.getX(), pt_camframe.getY(), pt_camframe.getZ());
+    cv::Point2d pt_pixelframe(uv.at<double>(0, 0), uv.at<double>(1, 0));
+
+    return pt_pixelframe;
 }
 
 
@@ -307,21 +354,9 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     // Convert laserscan points to pixel points
     std::vector<cv::Point2d> pts_uv;
     for (int i = 0; i < cloud_raw->points.size(); ++i) {
-        // Transform to camera frame
-        tf::Vector3 pt_l(cloud_raw->points[i].x, cloud_raw->points[i].y, cloud_raw->points[i].z); 
-        tf::Vector3 pt_c = rot_cam2laser_ * pt_l + tras_cam2laser_;
-        if(pt_c.getZ() <= 0.0) // points behind ego
+        cv::Point2d pt_uv = point_laser2pixel(cloud_raw->points[i].x, cloud_raw->points[i].y, cloud_raw->points[i].z); 
+        if(pt_uv.x == -1 && pt_uv.y == -1)
             continue;
-
-        // Normalization: z --> 1
-        pt_c.setX(pt_c.getX() / pt_c.getZ());
-        pt_c.setY(pt_c.getY() / pt_c.getZ());
-        pt_c.setZ(1.0);
-
-        // Trasform to pixel frame
-        cv::Mat pt_cam = (cv::Mat_<double>(3, 1) << pt_c.getX(), pt_c.getY(), pt_c.getZ());
-        cv::Mat uv = K_ * pt_cam;
-        cv::Point2d pt_uv(uv.at<double>(0, 0), uv.at<double>(1, 0));
         pts_uv.push_back(pt_uv);
 
         // Connect relationship between valid laserscan points to interest classes
@@ -334,6 +369,9 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             // Note that the pointcloud would be registered repeatly, so need to filter it later.
         }        
     }
+
+    // Custom message
+    walker_msgs::Det3DArray detection_array;
 
     // Remove outlier for each object cloud
     for(int i = 0; i < obj_list.size(); i++) {
@@ -363,13 +401,31 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             center = (min_point.getVector3fMap() + max_point.getVector3fMap()) / 2.0;
             obj_list[i].location.x = center[0];
             obj_list[i].location.y = center[1];
+            double tmp_r1 = sqrt(pow(max_point.x - center[0], 2) + pow(max_point.y - center[1], 2));
+            double tmp_r2 = sqrt(pow(min_point.x - center[0], 2) + pow(min_point.y - center[1], 2));
+            obj_list[i].radius = std::max(tmp_r1, tmp_r2);
 
+
+            // TODO: recover object dimension from image
+            tf::Vector3 lefttop_laserframe = point_pixel2laser(obj_list[i].box.center.x - obj_list[i].box.size_x / 2, 
+                                                                obj_list[i].box.center.y - obj_list[i].box.size_y / 2,
+                                                                obj_list[i].location.x);
+            tf::Vector3 righttop_laserframe = point_pixel2laser(obj_list[i].box.center.x + obj_list[i].box.size_x / 2, 
+                                                                obj_list[i].box.center.y - obj_list[i].box.size_y / 2,
+                                                                obj_list[i].location.x);
+            // tf::Vector3 center_from_image = point_pixel2laser(obj_list[i].box.center.x, 
+            //                                                     obj_list[i].box.center.y,
+            //                                                     obj_list[i].location.x);
+            double radius_from_image = fabs(lefttop_laserframe.getY() - righttop_laserframe.getY()) / 2;
+
+
+            // Center from laserscan  & Radius from image
             visualization_msgs::Marker marker;
             marker.header.frame_id = laser_msg_ptr->header.frame_id;
             marker.header.stamp = ros::Time();
             marker.ns = "detection_result";
             marker.id = i;
-            marker.type = visualization_msgs::Marker::SPHERE;
+            marker.type = visualization_msgs::Marker::CYLINDER;
             marker.lifetime = ros::Duration(0.2);
             marker.action = visualization_msgs::Marker::ADD;
             marker.pose.position.x = obj_list[i].location.x;
@@ -379,17 +435,37 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             marker.pose.orientation.y = 0.0;
             marker.pose.orientation.z = 0.0;
             marker.pose.orientation.w = 1.0;
-            marker.scale.x = 0.4;
-            marker.scale.y = 0.4;
-            marker.scale.z = 0.4;
-            marker.color.a = 0.4;
+            // marker.scale.x = marker.scale.y = obj_list[i].radius * 2;
+            marker.scale.x = marker.scale.y = radius_from_image * 2;
+            marker.scale.z = 0.5;
+            marker.color.a = 0.2;
             marker.color.g = 1.0;
-
             marker_array.markers.push_back(marker);
+
+            // // Center from image & Radius from image
+            // visualization_msgs::Marker marker2 = marker;
+            // marker2.ns = "detection_result2";
+            // marker2.color.a = 0.2;
+            // marker2.color.r = marker2.color.g = marker2.color.b = 1.0;
+            // marker2.scale.x = obj_list[i].radius * 2;
+            // marker2.scale.y = obj_list[i].radius * 2;
+            // marker2.scale.x = marker2.scale.y = radius_from_image * 2;
+            // marker_array.markers.push_back(marker2);
+
+            // Pack object infomation to Det3D.msg
+            walker_msgs::Det3D det_msg;
+            det_msg.x = obj_list[i].location.x;
+            det_msg.y = obj_list[i].location.y;
+            det_msg.z = 0;
+            det_msg.yaw = 0;
+            det_msg.radius = radius_from_image;
+            det_msg.confidence = obj_list[i].box.score;
+            detection_array.dets_list.push_back(det_msg);
         }
         // TODO: deal with the objects which has no matched points
     }
 
+    
     // Publish visualization topics
     if(pub_marker_array_.getNumSubscribers() > 0)
         pub_marker_array_.publish(marker_array);
@@ -407,6 +483,14 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
         pub_combined_image_.publish(result_image.toImageMsg());
     }
 
+    // Publish detection result
+    if(pub_detection3d_.getNumSubscribers() > 0) {
+        detection_array.header.frame_id = laser_msg_ptr->header.frame_id;
+        detection_array.header.stamp = ros::Time::now();
+        pub_detection3d_.publish(detection_array);
+    }
+
+    // Show object infomation
     if(obj_list.size() > 0){
         cout << "Prediction result:" << endl;
         for(int i = 0; i < obj_list.size(); i++) {
@@ -418,7 +502,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
 
 
 int main(int argc, char **argv) {
-    ros::init(argc, argv, "show_scan_image_node");
+    ros::init(argc, argv, "scan_image_combine_node");
     ros::NodeHandle nh, pnh("~");
     ScanImageCombineNode node(nh, pnh);
     ros::spin();

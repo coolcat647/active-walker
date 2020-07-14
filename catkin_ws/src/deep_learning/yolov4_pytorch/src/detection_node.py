@@ -233,17 +233,19 @@ class Yolov4Node(object):
 
 if __name__ == '__main__':
     rospy.init_node('yolov4_node', anonymous=False)
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--imgfile", default=os.path.dirname(__file__) + '/data/dog.jpg',
-                    help="Relative path to the image to detect. Default: data/dog.jpg")
-    parser.add_argument("--weightfile", default=os.path.dirname(__file__) + '/../weights/yolov4-tiny.weights',
-                    help="Relative path to the yolov4 weights. Default: /../weights/yolov4.weights")
-    parser.add_argument("--cfgfile", default=os.path.dirname(__file__) + '/cfg/yolov4-tiny.cfg',
-                    help="Relative path to the yolov4 configure file. Default: cfg/yolov4-custom.cfg")
-    argv = parser.parse_args()
-    cfgfile = argv.cfgfile
-    weightfile = argv.weightfile
-    imgfile = argv.imgfile
-
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("--imgfile", default=os.path.dirname(__file__) + '/data/dog.jpg',
+    #                 help="Relative path to the image to detect. Default: data/dog.jpg")
+    # parser.add_argument("--weightfile", default=os.path.dirname(__file__) + '/../weights/yolov4-tiny.weights',
+    #                 help="Relative path to the yolov4 weights. Default: /../weights/yolov4.weights")
+    # parser.add_argument("--cfgfile", default=os.path.dirname(__file__) + '/cfg/yolov4-tiny.cfg',
+    #                 help="Relative path to the yolov4 configure file. Default: cfg/yolov4-custom.cfg")
+    # argv = parser.parse_args()
+    # cfgfile = argv.cfgfile
+    # weightfile = argv.weightfile
+    # imgfile = argv.imgfile
+    
+    weightfile = os.path.join(os.path.dirname(__file__), '../weights/yolov4-tiny.weights')
+    cfgfile = os.path.join(os.path.dirname(__file__), '../cfg/yolov4-tiny.cfg')
     node = Yolov4Node(cfgfile, weightfile)
     rospy.spin()

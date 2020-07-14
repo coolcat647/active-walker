@@ -56,6 +56,9 @@ add_message_files(
   FILES
   BBox2D.msg
   Detection2D.msg
+
+  Det3D.msg
+  Det3DArray.msg
 )
 
 ## Generate services in the 'srv' folder
