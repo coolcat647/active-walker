@@ -134,7 +134,7 @@ class Yolov4Node(object):
             self.model.cuda()
 
         self.cvbridge = CvBridge()
-        self.pub_bbox = rospy.Publisher('~detection_result', Detection2D, queue_size=1)
+        self.pub_bbox = rospy.Publisher('~det2d_result', Detection2D, queue_size=1)
         self.sub_image = rospy.Subscriber("~image_input", ROSImage, self.image_cb, queue_size=1)
         self.detection_srv = rospy.Service("~yolo_detect", Detection2DTrigger, self.srv_cb)
         print(rospy.get_name() + ' is ready.')
@@ -147,7 +147,7 @@ class Yolov4Node(object):
             print(e)
             return
         img_sized = cv2.resize(cv_image, (self.model.width, self.model.height))
-        boxes_batch = do_detect(self.model, img_sized, 0.4, 0.3, self.use_cuda)
+        boxes_batch = do_detect(self.model, img_sized, 0.5, 0.2, self.use_cuda)
 
         detection_msg = Detection2D()
         detection_msg.header.stamp = rospy.Time.now()

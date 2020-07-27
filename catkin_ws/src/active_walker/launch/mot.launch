@@ -6,4 +6,7 @@
     <!-- Combine laserscan and image detection result -->
     <node name="scan_image_combine_node" pkg="active_walker" type="scan_image_combine_node" required="true" output="screen" />
 
+    <!-- Multi-Object Tracking onde -->
+    <!-- <node name="mot2d_node" pkg="multi_object_tracking" type="mot2d_node.py" required="true" output="screen" /> -->
+
 </launch>

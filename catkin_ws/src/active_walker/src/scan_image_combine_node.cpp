@@ -49,6 +49,7 @@
 #include <pcl_conversions/pcl_conversions.h> // ros2pcl
 #include <pcl/filters/radius_outlier_removal.h> // RemoveOutlier
 #include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl_ros/transforms.h>
 
 using namespace std;
 using namespace cv;
@@ -144,7 +145,7 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     pub_combined_image_ = nh_.advertise<sensor_msgs::Image>("debug_reprojection", 1);
     pub_marker_array_ = nh.advertise<visualization_msgs::MarkerArray>("obj_marker", 1);
     pub_colored_pc_ = nh.advertise<sensor_msgs::PointCloud2>("colored_pc", 1);
-    pub_detection3d_ = nh.advertise<walker_msgs::Det3DArray>("detection_result", 1);
+    pub_detection3d_ = nh.advertise<walker_msgs::Det3DArray>("det3d_result", 1);
     scan_sub_.subscribe(nh_, scan_topic, 1);
     image_sub_.subscribe(nh_, img_topic, 1);
     sync_.reset(new MySynchronizer(MySyncPolicy(10), image_sub_, scan_sub_));
@@ -333,6 +334,28 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
         if(is_interest_class(boxes[i].class_name)) {
             ObjInfo obj_info;
             obj_info.box = boxes[i];
+
+            // Skip the box which is too small
+            if(obj_info.box.size_x < 50 ){   // Experimental test value
+                ROS_WARN("Box size is too small: %.0fx%.0f at image location(%.0f, %.0f)\n", 
+                                                                    obj_info.box.size_x, 
+                                                                    obj_info.box.size_y,
+                                                                    obj_info.box.center.x,
+                                                                    obj_info.box.center.y);
+                continue;
+            }
+
+            // Skip the boxes which are too closed
+            bool flag_too_closed = false;
+            for(int j = 0; j < obj_list.size(); j++) {
+                if(fabs(obj_info.box.center.x - obj_list[j].box.center.x) < 10) {
+                    ROS_WARN("Boxes are is too closed: %.0f\n", fabs(obj_info.box.center.x - obj_list[j].box.center.x));
+                    flag_too_closed = true;
+                    break;
+                }
+            }
+            if(flag_too_closed) continue;
+
             obj_list.push_back(obj_info);
         }
     }
@@ -348,6 +371,13 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     projector_.projectLaser(*laser_msg_ptr, cloud_msg);
     pcl::fromROSMsg(cloud_msg, *cloud_raw);
 
+    // For YDLiDAR G4
+    // tf::Transform ydlidar_transform;
+    // tf::Quaternion tmp_q;
+    // tmp_q.setEuler(M_PI, 0, 0);
+    // ydlidar_transform.setRotation(tmp_q);
+    // pcl_ros::transformPointCloud(*cloud_raw, *cloud_raw, ydlidar_transform);
+    
     // Color pointcloud to visaulize detected points
     PointCloudXYZRGBPtr cloud_colored(new PointCloudXYZRGB);
 
@@ -394,7 +424,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             if(obj_list[i].cloud->points.size() < 1)
                 continue;
 
-            // Find the centroid of each object
+            // Find the center of each object
             pcl::PointXYZ min_point, max_point;
             Eigen::Vector3f center;
             pcl::getMinMax3D(*(obj_list[i].cloud), min_point, max_point);
@@ -406,27 +436,47 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             obj_list[i].radius = std::max(tmp_r1, tmp_r2);
 
 
-            // TODO: recover object dimension from image
+            // Recover object dimension from image
             tf::Vector3 lefttop_laserframe = point_pixel2laser(obj_list[i].box.center.x - obj_list[i].box.size_x / 2, 
                                                                 obj_list[i].box.center.y - obj_list[i].box.size_y / 2,
                                                                 obj_list[i].location.x);
             tf::Vector3 righttop_laserframe = point_pixel2laser(obj_list[i].box.center.x + obj_list[i].box.size_x / 2, 
                                                                 obj_list[i].box.center.y - obj_list[i].box.size_y / 2,
                                                                 obj_list[i].location.x);
+            tf::Vector3 rightbottom_laserframe = point_pixel2laser(obj_list[i].box.center.x + obj_list[i].box.size_x / 2, 
+                                                                obj_list[i].box.center.y + obj_list[i].box.size_y / 2,
+                                                                obj_list[i].location.x);
+            double h_from_image = fabs(rightbottom_laserframe.getZ() - righttop_laserframe.getZ());
+            double w_from_image = fabs(lefttop_laserframe.getY() - righttop_laserframe.getY());
             // tf::Vector3 center_from_image = point_pixel2laser(obj_list[i].box.center.x, 
             //                                                     obj_list[i].box.center.y,
             //                                                     obj_list[i].location.x);
             double radius_from_image = fabs(lefttop_laserframe.getY() - righttop_laserframe.getY()) / 2;
 
 
-            // Center from laserscan  & Radius from image
+            // Pack the custom ros package
+            walker_msgs::Det3D det_msg;
+            det_msg.x = obj_list[i].location.x;
+            det_msg.y = obj_list[i].location.y;
+            det_msg.z = 0;
+            det_msg.yaw = 0;
+            det_msg.radius = radius_from_image;
+            det_msg.h = h_from_image;           // Additional
+            det_msg.w = w_from_image;           // Additional
+            det_msg.l = w_from_image;           // Additional
+            det_msg.confidence = obj_list[i].box.score;
+            det_msg.class_name = obj_list[i].box.class_name;
+            detection_array.dets_list.push_back(det_msg);
+
+            // Visualization
             visualization_msgs::Marker marker;
             marker.header.frame_id = laser_msg_ptr->header.frame_id;
             marker.header.stamp = ros::Time();
             marker.ns = "detection_result";
             marker.id = i;
-            marker.type = visualization_msgs::Marker::CYLINDER;
-            marker.lifetime = ros::Duration(0.2);
+            marker.type = visualization_msgs::Marker::CUBE;
+            // marker.lifetime = ros::Duration(0.2);
+            marker.lifetime = ros::Duration(10.0);
             marker.action = visualization_msgs::Marker::ADD;
             marker.pose.position.x = obj_list[i].location.x;
             marker.pose.position.y = obj_list[i].location.y;
@@ -436,31 +486,35 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             marker.pose.orientation.z = 0.0;
             marker.pose.orientation.w = 1.0;
             // marker.scale.x = marker.scale.y = obj_list[i].radius * 2;
-            marker.scale.x = marker.scale.y = radius_from_image * 2;
-            marker.scale.z = 0.5;
+            marker.scale.x = w_from_image;
+            marker.scale.y = w_from_image;
+            marker.scale.z = h_from_image;
             marker.color.a = 0.2;
             marker.color.g = 1.0;
             marker_array.markers.push_back(marker);
 
-            // // Center from image & Radius from image
-            // visualization_msgs::Marker marker2 = marker;
-            // marker2.ns = "detection_result2";
-            // marker2.color.a = 0.2;
-            // marker2.color.r = marker2.color.g = marker2.color.b = 1.0;
-            // marker2.scale.x = obj_list[i].radius * 2;
-            // marker2.scale.y = obj_list[i].radius * 2;
-            // marker2.scale.x = marker2.scale.y = radius_from_image * 2;
-            // marker_array.markers.push_back(marker2);
+            visualization_msgs::Marker str_marker;
+            str_marker.header.frame_id = laser_msg_ptr->header.frame_id;
+            str_marker.header.stamp = ros::Time();
+            str_marker.ns = "detection_number";
+            str_marker.id = i;
+            str_marker.type = visualization_msgs::Marker::CUBE;
+            // str_marker.lifetime = ros::Duration(0.2);
+            str_marker.lifetime = ros::Duration(10.0);
+            str_marker.action = visualization_msgs::Marker::ADD;
+            str_marker.pose.position.x = obj_list[i].location.x;
+            str_marker.pose.position.y = obj_list[i].location.y;
+            str_marker.pose.position.z = 0;
+            str_marker.text = std::to_string(i);
+            str_marker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
 
-            // Pack object infomation to Det3D.msg
-            walker_msgs::Det3D det_msg;
-            det_msg.x = obj_list[i].location.x;
-            det_msg.y = obj_list[i].location.y;
-            det_msg.z = 0;
-            det_msg.yaw = 0;
-            det_msg.radius = radius_from_image;
-            det_msg.confidence = obj_list[i].box.score;
-            detection_array.dets_list.push_back(det_msg);
+            // str_marker.scale.x = str_marker.scale.y = obj_list[i].radius * 2;
+            str_marker.scale.x = w_from_image;
+            str_marker.scale.y = w_from_image;
+            str_marker.scale.z = h_from_image;
+            str_marker.color.a = 0.2;
+            str_marker.color.g = 1.0;
+            marker_array.markers.push_back(str_marker);
         }
         // TODO: deal with the objects which has no matched points
     }

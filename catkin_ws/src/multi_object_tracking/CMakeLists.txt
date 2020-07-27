@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(active_walker)
+project(multi_object_tracking)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -8,28 +8,21 @@ project(active_walker)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  rospy
-  roscpp
-  sensor_msgs
-  geometry_msgs
-  visualization_msgs
-  tf
   cv_bridge
-  std_msgs
+  geometry_msgs
   message_filters
-  laser_geometry
-  image_transport
-  pcl_ros
-  pcl_conversions
-
-  # Custom msg & srv
+  roscpp
+  rospy
+  sensor_msgs
+  std_msgs
+  tf
+  visualization_msgs
   walker_msgs
 )
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
-find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED)
+
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -84,7 +77,7 @@ find_package(OpenCV REQUIRED)
 ## Generate added messages and services with any dependencies listed here
 # generate_messages(
 #   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
+#   geometry_msgs#   sensor_msgs#   std_msgs#   visualization_msgs#   walker_msgs
 # )
 
 ################################################
@@ -117,10 +110,10 @@ find_package(OpenCV REQUIRED)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
- # INCLUDE_DIRS include
-#  LIBRARIES active_walker
- # CATKIN_DEPENDS rospy
- DEPENDS system_lib Eigen3 OpenCV
+#  INCLUDE_DIRS include
+#  LIBRARIES multi_object_tracking
+#  CATKIN_DEPENDS cv_bridge geometry_msgs message_filters roscpp rospy sensor_msgs std_msgs tf visualization_msgs walker_msgs
+#  DEPENDS system_lib
 )
 
 ###########
@@ -132,12 +125,11 @@ catkin_package(
 include_directories(
 # include
   ${catkin_INCLUDE_DIRS}
-  ${EIGEN3_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/active_walker.cpp
+#   src/${PROJECT_NAME}/multi_object_tracking.cpp
 # )
 
 ## Add cmake target dependencies of the library
@@ -148,7 +140,7 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/active_walker_node.cpp)
+# add_executable(${PROJECT_NAME}_node src/multi_object_tracking_node.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -164,21 +156,6 @@ include_directories(
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
-
-add_executable(scan_image_combine_node src/scan_image_combine_node.cpp)
-target_link_libraries(scan_image_combine_node
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-  ${EIGEN3_LIBRARIES}
-)
-add_dependencies(scan_image_combine_node walker_msgs_generate_messages_cpp)
-
-add_executable(show_scan_image_node_old src/show_scan_image_node_old.cpp)
-target_link_libraries(show_scan_image_node_old
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-  ${EIGEN3_LIBRARIES}
-)
 
 #############
 ## Install ##
@@ -227,7 +204,7 @@ target_link_libraries(show_scan_image_node_old
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_active_walker.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_multi_object_tracking.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()
