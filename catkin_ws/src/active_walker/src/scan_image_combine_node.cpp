@@ -2,6 +2,7 @@
 #include <time.h>
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 
 // ROS
 #include <ros/ros.h>
@@ -99,7 +100,7 @@ class ScanImageCombineNode {
 public:
     ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle pnh);
     void img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_ptr, const sensor_msgs::LaserScan::ConstPtr &laser_msg_ptr);
-    void separate_outlier_points(PointCloudXYZPtr cloud_in, PointCloudXYZPtr cloud_out);
+    void separate_outlier_points(PointCloudXYZPtr cloud_in, PointCloudXYZPtr cloud_out, bool is_far);
     bool is_interest_class(string class_name);
     tf::Vector3 point_pixel2laser(double pixel_x, double pixel_y, double depth_from_laser);
     cv::Point2d point_laser2pixel(double x_from_laser, double y_from_laser, double z_from_laser);
@@ -173,7 +174,8 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     }
     rot_laser2cam_ = tf::Matrix3x3(stamped_transform.getRotation());
     tras_laser2cam_ = stamped_transform.getOrigin();
-    // cout << "tras_cam2laser:\n" << tras_laser2cam_[0] << ", " << tras_laser2cam_[1] << ", " << tras_laser2cam_[2] << endl;
+    
+    // Extrinsic matrix inversion
     rot_cam2laser_ = rot_laser2cam_.transpose();
     tras_cam2laser_ = rot_cam2laser_ * tras_laser2cam_ * (-1);
 
@@ -214,11 +216,7 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
 }
 
 
-void ScanImageCombineNode::separate_outlier_points(PointCloudXYZPtr cloud_in, PointCloudXYZPtr cloud_out) {
-    // // Copy cloud_in to pc_copied
-    // PointCloudXYZPtr pc_copied(new PointCloudXYZ);
-    // pcl::copyPointCloud(*cloud_in, *pc_copied);
-
+void ScanImageCombineNode::separate_outlier_points(PointCloudXYZPtr cloud_in, PointCloudXYZPtr cloud_out, bool is_far) {
     // Euclidean Cluster Extraction
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
     tree->setInputCloud(cloud_in);
@@ -232,7 +230,7 @@ void ScanImageCombineNode::separate_outlier_points(PointCloudXYZPtr cloud_in, Po
     euler_extractor.extract(cluster_indices);
 
     // Find the cloud cluster which is closest to ego
-    int idx_closest_cloud = 0;
+    int idx_proper_cloud = 0;
     std::vector<float> candidates;
     for(int i = 0; i < cluster_indices.size(); i++) {
         Eigen::Vector3f centroid;
@@ -245,9 +243,19 @@ void ScanImageCombineNode::separate_outlier_points(PointCloudXYZPtr cloud_in, Po
         centroid /= cluster_indices[i].indices.size();
         candidates.push_back(centroid.norm());
     }
-    idx_closest_cloud = arg_min(candidates);
 
-    pcl::PointIndices::Ptr inliers_ptr(new pcl::PointIndices(cluster_indices[idx_closest_cloud]));
+    // ROS_ERROR("Cluster num: %d, is_far: %s, ", candidates.size(), (is_far)? "true": "false");    
+    if(is_far && candidates.size() > 1){
+        int idx_closest = arg_min(candidates);
+        cluster_indices.erase(cluster_indices.begin() + idx_closest);
+        candidates.erase(candidates.begin() + idx_closest);
+        idx_proper_cloud = arg_min(candidates);
+    }else{
+        idx_proper_cloud = arg_min(candidates);
+    }
+    // ROS_ERROR("Proper candidates: %.2f\n", candidates[idx_proper_cloud]);
+    
+    pcl::PointIndices::Ptr inliers_ptr(new pcl::PointIndices(cluster_indices[idx_proper_cloud]));
     PointCloudXYZPtr cloud_extracted(new PointCloudXYZ);
     pcl::ExtractIndices<pcl::PointXYZ> extractor;
     extractor.setInputCloud(cloud_in);
@@ -259,16 +267,10 @@ void ScanImageCombineNode::separate_outlier_points(PointCloudXYZPtr cloud_in, Po
     pcl::RadiusOutlierRemoval<pcl::PointXYZ> outrem;
     outrem.setInputCloud(cloud_extracted);
     outrem.setRadiusSearch(0.2);
-    outrem.setMinNeighborsInRadius(5);
+    outrem.setMinNeighborsInRadius(2);
     outrem.filter(*(cloud_out));
 
-    pcl::copyPointCloud(*cloud_in, *cloud_out);
-
-    // pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;   
-    // sor.setInputCloud(cloud_in);
-    // sor.setMeanK(50);
-    // sor.setStddevMulThresh(0.25);
-    // sor.filter(*cloud_out);                    
+    pcl::copyPointCloud(*cloud_in, *cloud_out);                  
 }
 
 
@@ -337,7 +339,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
 
             // Skip the box which is too small
             if(obj_info.box.size_x < 50 ){   // Experimental test value
-                ROS_WARN("Box size is too small: %.0fx%.0f at image location(%.0f, %.0f)\n", 
+                ROS_WARN("Box size is too small: %.0fx%.0f at image location(%.0f, %.0f)", 
                                                                     obj_info.box.size_x, 
                                                                     obj_info.box.size_y,
                                                                     obj_info.box.center.x,
@@ -348,8 +350,8 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             // Skip the boxes which are too closed
             bool flag_too_closed = false;
             for(int j = 0; j < obj_list.size(); j++) {
-                if(fabs(obj_info.box.center.x - obj_list[j].box.center.x) < 10) {
-                    ROS_WARN("Boxes are is too closed: %.0f\n", fabs(obj_info.box.center.x - obj_list[j].box.center.x));
+                if(fabs(obj_info.box.center.x - obj_list[j].box.center.x) < 50) {
+                    ROS_WARN("Boxes are is too closed: %.0f", fabs(obj_info.box.center.x - obj_list[j].box.center.x));
                     flag_too_closed = true;
                     break;
                 }
@@ -370,13 +372,6 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     PointCloudXYZPtr cloud_raw(new PointCloudXYZ);
     projector_.projectLaser(*laser_msg_ptr, cloud_msg);
     pcl::fromROSMsg(cloud_msg, *cloud_raw);
-
-    // For YDLiDAR G4
-    // tf::Transform ydlidar_transform;
-    // tf::Quaternion tmp_q;
-    // tmp_q.setEuler(M_PI, 0, 0);
-    // ydlidar_transform.setRotation(tmp_q);
-    // pcl_ros::transformPointCloud(*cloud_raw, *cloud_raw, ydlidar_transform);
     
     // Color pointcloud to visaulize detected points
     PointCloudXYZRGBPtr cloud_colored(new PointCloudXYZRGB);
@@ -406,23 +401,26 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     // Remove outlier for each object cloud
     for(int i = 0; i < obj_list.size(); i++) {
         if(obj_list[i].cloud->points.size() > 1){
+            // Clustering and outlier removing
+            bool is_far = (obj_list[i].box.size_x >= 100)? false: true;
+            separate_outlier_points(obj_list[i].cloud, obj_list[i].cloud, is_far);
+            if(obj_list[i].cloud->points.size() < 1)
+                continue;
 
             // Merge raw detected points with color to visualization
             if(pub_colored_pc_.getNumSubscribers() > 0) {
+                int color_r = (rand() % 5) * 60;
+                int color_g = (rand() % 5) * 60;
+                int color_b = (rand() % 5) * 60;
                 PointCloudXYZRGBPtr tmp_cloud(new PointCloudXYZRGB);
                 pcl::copyPointCloud(*(obj_list[i].cloud), *tmp_cloud);
                 for(auto& point: *tmp_cloud) {
-                    point.r = 255;
-                    point.g = 0;
-                    point.b = 0;
+                    point.r = color_r;
+                    point.g = color_g;
+                    point.b = color_b;
                 }
                 *cloud_colored += *tmp_cloud;
             }
-
-            // Clustering and outlier removing
-            separate_outlier_points(obj_list[i].cloud, obj_list[i].cloud);
-            if(obj_list[i].cloud->points.size() < 1)
-                continue;
 
             // Find the center of each object
             pcl::PointXYZ min_point, max_point;
@@ -475,8 +473,8 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             marker.ns = "detection_result";
             marker.id = i;
             marker.type = visualization_msgs::Marker::CUBE;
-            // marker.lifetime = ros::Duration(0.2);
-            marker.lifetime = ros::Duration(10.0);
+            marker.lifetime = ros::Duration(0.2);
+            // marker.lifetime = ros::Duration(10.0);
             marker.action = visualization_msgs::Marker::ADD;
             marker.pose.position.x = obj_list[i].location.x;
             marker.pose.position.y = obj_list[i].location.y;
@@ -492,29 +490,6 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             marker.color.a = 0.2;
             marker.color.g = 1.0;
             marker_array.markers.push_back(marker);
-
-            visualization_msgs::Marker str_marker;
-            str_marker.header.frame_id = laser_msg_ptr->header.frame_id;
-            str_marker.header.stamp = ros::Time();
-            str_marker.ns = "detection_number";
-            str_marker.id = i;
-            str_marker.type = visualization_msgs::Marker::CUBE;
-            // str_marker.lifetime = ros::Duration(0.2);
-            str_marker.lifetime = ros::Duration(10.0);
-            str_marker.action = visualization_msgs::Marker::ADD;
-            str_marker.pose.position.x = obj_list[i].location.x;
-            str_marker.pose.position.y = obj_list[i].location.y;
-            str_marker.pose.position.z = 0;
-            str_marker.text = std::to_string(i);
-            str_marker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
-
-            // str_marker.scale.x = str_marker.scale.y = obj_list[i].radius * 2;
-            str_marker.scale.x = w_from_image;
-            str_marker.scale.y = w_from_image;
-            str_marker.scale.z = h_from_image;
-            str_marker.color.a = 0.2;
-            str_marker.color.g = 1.0;
-            marker_array.markers.push_back(str_marker);
         }
         // TODO: deal with the objects which has no matched points
     }
@@ -556,7 +531,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
 
 
 int main(int argc, char **argv) {
-    ros::init(argc, argv, "scan_image_combine_node");
+    ros::init(argc, argv, "scan_clustering_node");
     ros::NodeHandle nh, pnh("~");
     ScanImageCombineNode node(nh, pnh);
     ros::spin();
