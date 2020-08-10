@@ -11,24 +11,31 @@ using namespace std;
 
 ros::Publisher pub_map;
 ros::Publisher pub_path;
-nav_msgs::OccupancyGrid* a;
+double solver_timeout_ms;
 
-void map_cb(const nav_msgs::OccupancyGrid &map_msg) {
-    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+void map_cb(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr) {
+    // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
-    a = new nav_msgs::OccupancyGrid(map_msg);
-    int map_width = map_msg.info.width;
-    int map_height = map_msg.info.height;
+    int map_width = map_msg_ptr->info.width;
+    int map_height = map_msg_ptr->info.height;
 
     nav_msgs::Path result_path;
-    result_path.header.frame_id = map_msg.header.frame_id;
+    result_path.header.frame_id = map_msg_ptr->header.frame_id;
     Astar::Solver solver;
     int origin_idx = map_width * map_height / 2 - map_width/2; 
-    bool flag_success = solver.solve_ros(a, &result_path, origin_idx, origin_idx + 15, 10.0);
-    pub_path.publish(result_path);
+    bool flag_success = solver.solve_ros(map_msg_ptr, &result_path, origin_idx, origin_idx + 50, solver_timeout_ms);
+    if(flag_success){
+        result_path.header.stamp = ros::Time::now();
+        pub_path.publish(result_path);
+    }
+    else{
+        ROS_WARN("No solution for path finding in timeout: %.1f ms", solver_timeout_ms);
+        result_path.header.stamp = ros::Time::now();
+        pub_path.publish(result_path);
+    }
 
-    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
+    // std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    // std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
 }
 
 void sigint_cb(int sig) {
@@ -40,11 +47,14 @@ void sigint_cb(int sig) {
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "path_finding_node");
-    ros::NodeHandle nh;
+    signal(SIGINT, sigint_cb);
 
+    ros::NodeHandle nh;
     ros::Subscriber sub_scan = nh.subscribe("local_map", 5, map_cb);
     pub_path = nh.advertise<nav_msgs::Path>("path_test", 1);
-    signal(SIGINT, sigint_cb);
+
+    ros::param::param<double>("~solver_timeout_ms", solver_timeout_ms, 40.0);
+    
     ros::spin();
     return 0;
 }

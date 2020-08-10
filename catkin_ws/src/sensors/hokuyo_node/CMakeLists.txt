@@ -50,9 +50,6 @@ target_link_libraries(hokuyo_node
 add_executable(getID src/getID.cpp)
 target_link_libraries(getID libhokuyo ${LOG4CXX_LIBRARY} ${catkin_LIBRARIES})
 
-add_executable(laserscan_mapping_node src/laserscan_mapping.cpp)
-target_link_libraries(laserscan_mapping_node ${catkin_LIBRARIES})
-
 add_executable(getFirmwareVersion src/getFirmwareVersion.cpp)
 target_link_libraries(getFirmwareVersion
   libhokuyo

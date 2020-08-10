@@ -402,7 +402,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     for(int i = 0; i < obj_list.size(); i++) {
         if(obj_list[i].cloud->points.size() > 1){
             // Clustering and outlier removing
-            bool is_far = (obj_list[i].box.size_x >= 100)? false: true;
+            bool is_far = (obj_list[i].box.size_x < 100 && fabs(obj_list[i].box.center.x - cv_ptr->image.cols/2) < 270)? true: false;
             separate_outlier_points(obj_list[i].cloud, obj_list[i].cloud, is_far);
             if(obj_list[i].cloud->points.size() < 1)
                 continue;
@@ -464,6 +464,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             det_msg.l = w_from_image;           // Additional
             det_msg.confidence = obj_list[i].box.score;
             det_msg.class_name = obj_list[i].box.class_name;
+            det_msg.class_id = obj_list[i].box.id;
             detection_array.dets_list.push_back(det_msg);
 
             // Visualization
@@ -516,6 +517,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     if(pub_detection3d_.getNumSubscribers() > 0) {
         detection_array.header.frame_id = laser_msg_ptr->header.frame_id;
         detection_array.header.stamp = ros::Time::now();
+        detection_array.scan = *laser_msg_ptr;
         pub_detection3d_.publish(detection_array);
     }
 

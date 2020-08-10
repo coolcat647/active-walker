@@ -14,6 +14,10 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   std_msgs
   std_srvs
+  tf
+  laser_geometry
+  pcl_ros
+  pcl_conversions
 )
 
 ## System dependencies are found with CMake's conventions
@@ -159,6 +163,9 @@ target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
 
 add_executable(fake_map_node src/fake_map.cpp)
 target_link_libraries(fake_map_node ${PROJECT_NAME} ${catkin_LIBRARIES})
+
+add_executable(scan2localmap_node src/scan2localmap_node.cpp)
+target_link_libraries(scan2localmap_node ${catkin_LIBRARIES})
 
 add_executable(path_finding_node src/path_finding_node.cpp)
 target_link_libraries(path_finding_node ${PROJECT_NAME} ${catkin_LIBRARIES})

@@ -49,10 +49,11 @@ Astar::Node* Astar::Solver::find_node(std::vector<Node*>& nodes_list, Grid2D gri
     return nullptr;
 }
 
-bool Astar::Solver::solve_ros(nav_msgs::OccupancyGrid* map_msg, nav_msgs::Path* path, int start_idx, int goal_idx, double timeout_ms) {
-    map_msg_ = map_msg;
-    int map_width = (int)map_msg_->info.width;
-    int map_height = (int)map_msg_->info.height;
+bool Astar::Solver::solve_ros(nav_msgs::OccupancyGrid::ConstPtr map_msg_ptr, nav_msgs::Path* path, int start_idx, int goal_idx, double timeout_ms) {
+    // map_ptr_ = nav_msgs::OccupancyGrid::Ptr(new nav_msgs::OccupancyGrid(*map_msg_ptr));
+    map_ptr_ = map_msg_ptr;
+    int map_width = (int)map_ptr_->info.width;
+    int map_height = (int)map_ptr_->info.height;
 
     std::vector<Astar::Node*> open_set;
     std::vector<Astar::Node*> close_set;
@@ -113,10 +114,10 @@ bool Astar::Solver::solve_ros(nav_msgs::OccupancyGrid* map_msg, nav_msgs::Path* 
     if(flag_success_){
         while(cur_node != nullptr) {
             geometry_msgs::PoseStamped pose;
-            pose.pose.position.x = cur_node->grid.x * map_msg_->info.resolution \
-                                    + map_msg_->info.origin.position.x;
-            pose.pose.position.y = cur_node->grid.y * map_msg_->info.resolution \
-                                    + map_msg_->info.origin.position.y;
+            pose.pose.position.x = cur_node->grid.x * map_ptr_->info.resolution \
+                                    + map_ptr_->info.origin.position.x;
+            pose.pose.position.y = cur_node->grid.y * map_ptr_->info.resolution \
+                                    + map_ptr_->info.origin.position.y;
             path->poses.push_back(pose);
             cur_node = cur_node->parent;
         }
@@ -127,8 +128,8 @@ bool Astar::Solver::solve_ros(nav_msgs::OccupancyGrid* map_msg, nav_msgs::Path* 
 }
 
 bool Astar::Solver::is_collision(Grid2D grid) {
-    int width = map_msg_->info.width;
-    int height = map_msg_->info.height;
+    int width = map_ptr_->info.width;
+    int height = map_ptr_->info.height;
 
     // Check the (x,y) is valid
     if(grid.x < 0 || grid.y < 0 || grid.x >= width || grid.y >= height)
@@ -138,16 +139,16 @@ bool Astar::Solver::is_collision(Grid2D grid) {
     int map_idx = grid.y * width + (grid.x % width);
 
     // Due to (the second large gaussian value*100) || (prefer not to go to unknown space)
-    if(map_msg_->data[map_idx] > 60 || map_msg_->data[map_idx] < 0)  
+    if(map_ptr_->data[map_idx] > 80 || map_ptr_->data[map_idx] < 0)  
         return true;
     else
         return false;
 }
 
 int Astar::Solver::against_wall_cost(Grid2D grid) {
-    int width = map_msg_->info.width;
+    int width = map_ptr_->info.width;
     int map_idx = grid.y * width + (grid.x % width);
-    return map_msg_->data[map_idx];
+    return map_ptr_->data[map_idx];
 }
 
 Astar::Grid2D Astar::Heuristic::getDelta(Grid2D source, Grid2D target) {

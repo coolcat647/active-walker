@@ -85,12 +85,7 @@ class ForceFilteringNode(object):
         self.pub_force.publish(output_msg)
         
 
-
-
 if __name__ == '__main__':
     rospy.init_node('force_extraction_node', anonymous=False)
-
     node = ForceFilteringNode()
     rospy.spin()
-
-        
