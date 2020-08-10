@@ -22,7 +22,7 @@ void map_cb(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr) {
     nav_msgs::Path result_path;
     result_path.header.frame_id = map_msg_ptr->header.frame_id;
     Astar::Solver solver;
-    int origin_idx = map_width * map_height / 2 - map_width/2; 
+    int origin_idx = map_width * map_height / 2 + map_width/2; 
     bool flag_success = solver.solve_ros(map_msg_ptr, &result_path, origin_idx, origin_idx + 50, solver_timeout_ms);
     if(flag_success){
         result_path.header.stamp = ros::Time::now();
