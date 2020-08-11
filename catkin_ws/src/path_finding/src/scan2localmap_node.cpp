@@ -31,32 +31,6 @@ typedef pcl::PointCloud<pcl::PointXYZ>::Ptr PointCloudXYZPtr;
 typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloudXYZRGB;
 typedef pcl::PointCloud<pcl::PointXYZRGB>::Ptr PointCloudXYZRGBPtr;
 
-// void gauss_filter(vector<int8_t> &vec, int width, int height, int idx, int kernel_size, int peak_value) { 
-//     int bound = kernel_size/2;
-
-//     int8_t* kernel_table;
-//     switch(kernel_size){
-//         case 3:
-//             kernel_table = kgaussian_kernel3; break;
-//         case 5:
-//             kernel_table = kgaussian_kernel5; break;
-//         case 7:
-//             kernel_table = kgaussian_kernel7; break;
-//         case 9:
-//             kernel_table = kgaussian_kernel9; break;
-//     }
-
-//     // Apply filter to the input      
-//     for(int y = -bound; y <= bound; y++) 
-//         for (int x = -bound; x <= bound; x++) {
-//             int op_idx = idx + x + width * y;
-//             // if(vec[op_idx] < 0) continue;                              // do not apply filter out of laser range
-//             if(op_idx < 0 || op_idx > width * height) continue;           // upper and bottom bound
-//             else if(abs(op_idx % width - idx % width) > bound) continue;  // left and right bound
-//             int result = vec[op_idx] + kernel_table[(y + bound)*kernel_size + x + bound];
-//             vec[op_idx] = (result > peak_value)? peak_value: result;
-//         }
-// }
 
 class Scan2LocalmapNode {
 public:
@@ -165,14 +139,6 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     footprint_ptr_->polygon.points.push_back(pt);
     pt.x = -0.1, pt.y = 0.2014, pt.z = 0.0;
     footprint_ptr_->polygon.points.push_back(pt);
-    // pt.x = -0.1, pt.y = 0.35, pt.z = 0.0;
-    // footprint_ptr_->polygon.points.push_back(pt);
-    // pt.x = 0.5, pt.y = 0.35, pt.z = 0.0;
-    // footprint_ptr_->polygon.points.push_back(pt);
-    // pt.x = 0.5, pt.y = -0.35, pt.z = 0.0;
-    // footprint_ptr_->polygon.points.push_back(pt);
-    // pt.x = -0.1, pt.y = -0.35, pt.z = 0.0;
-    // footprint_ptr_->polygon.points.push_back(pt);
 
     // Cropbox filter init
     box_filter_.setMax(Eigen::Vector4f(0.5 + inflation_radius, 0.35 + inflation_radius, 5.0, 1.0));
@@ -182,8 +148,6 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
 
     // Filter kernel generator
     butterworth_filter_generate(inflation_radius, 6, map_resolution, 100);
-    // vector<int8_t> tmp_vec;
-    // asymmetric_gaussian_filter(tmp_vec, map_resolution, 200, 200, 0, M_PI / 4, 1.2, 100);
 }
 
 
@@ -345,7 +309,6 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
         if((0 < idx) && (idx < map_limit)){
             if(localmap_ptr_->data[idx] == 100)
                 continue;
-            // else if(is_obstacle_inside_robot(laser_x, laser_y))
             butterworth_filter(localmap_ptr_->data, map_width, map_height, idx, 100);
         }
     }
@@ -400,8 +363,6 @@ void Scan2LocalmapNode::scan_cb_deprecated(const sensor_msgs::LaserScan &laser_m
         if((0 < idx) && (idx < map_limit)){
             if(localmap_ptr_->data[idx] == 100)
                 continue;
-            // else if(is_obstacle_inside_robot(laser_x, laser_y))
-            // gauss_filter(localmap_ptr_->data, map_width, map_height, idx, 7, 100);
             butterworth_filter(localmap_ptr_->data, map_width, map_height, idx, 100);
         }
     }

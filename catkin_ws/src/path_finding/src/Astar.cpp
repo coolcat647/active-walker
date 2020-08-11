@@ -68,6 +68,12 @@ bool Astar::Solver::solve_ros(nav_msgs::OccupancyGrid::ConstPtr map_msg_ptr, nav
     ros::Duration timeout = ros::Duration(timeout_ms/1000);
     ros::Time begin_time = ros::Time::now();
     
+    if(is_collision(goal)){
+        path->header.stamp = ros::Time::now();
+        // cout << "Invaild goal" << endl;
+        return false;
+    }
+
     flag_success_ = false;
     while(!open_set.empty()) {
         if(ros::Time::now() - begin_time > timeout){
