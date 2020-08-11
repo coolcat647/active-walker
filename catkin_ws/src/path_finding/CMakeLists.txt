@@ -18,6 +18,9 @@ find_package(catkin REQUIRED COMPONENTS
   laser_geometry
   pcl_ros
   pcl_conversions
+
+  # Custom msg & srv
+  walker_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -169,6 +172,10 @@ target_link_libraries(scan2localmap_node ${catkin_LIBRARIES})
 
 add_executable(path_finding_node src/path_finding_node.cpp)
 target_link_libraries(path_finding_node ${PROJECT_NAME} ${catkin_LIBRARIES})
+
+add_executable(object2localmap_node src/object2localmap_node.cpp)
+target_link_libraries(object2localmap_node ${PROJECT_NAME} ${catkin_LIBRARIES})
+add_dependencies(object2localmap_node walker_msgs_generate_messages_cpp)
 
 #############
 ## Install ##

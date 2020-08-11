@@ -99,7 +99,7 @@ class MultiObjectTrackingNode(object):
             trk3d_msg = Trk3D()
             trk3d_msg.x, trk3d_msg.y = d[0], d[1]
             trk3d_msg.radius = d[2]
-            trk3d_msg.vx, trk3d_msg.vy = d[3], d[4]
+            trk3d_msg.vx, trk3d_msg.vy = vx, vy
             trk3d_msg.yaw = yaw
             trk3d_msg.confidence = d[6]
             trk3d_msg.class_id = int(d[7])
@@ -118,7 +118,7 @@ class MultiObjectTrackingNode(object):
             marker.scale.y = d[2] * 2
             marker.scale.z = 1.0
             marker.color.b = 1.0
-            marker.color.a = 0.25 #The alpha of the bounding-box
+            marker.color.a = 0.5 #The alpha of the bounding-box
             marker.pose.position.x = d[0]
             marker.pose.position.y = d[1]
             marker.pose.position.z = 0.0
@@ -149,7 +149,7 @@ class MultiObjectTrackingNode(object):
             str_marker.text = str(d[5])
             marker_array.markers.append(str_marker)
             
-            # Show direction    
+            # Show direction 
             arrow_marker = copy.deepcopy(marker)
             arrow_marker.type = Marker.ARROW
             arrow_marker.ns = 'direction'

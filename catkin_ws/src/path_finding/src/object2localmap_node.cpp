@@ -12,6 +12,8 @@
 #include <laser_geometry/laser_geometry.h>
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <walker_msgs/Trk3DArray.h>
+#include <walker_msgs/Trk3D.h>
 
 // TF
 #include <tf/transform_listener.h>
@@ -65,8 +67,7 @@ public:
     void butterworth_filter(vector<int8_t> &vec, int map_width, int map_height, int target_idx, int peak_value);
     void asymmetric_gaussian_filter(vector<int8_t> &vec, double map_resolution, int map_width, int map_height, int target_idx, double target_yaw, double target_speed, int peak_value);
     void butterworth_filter_generate(double filter_radius, int filter_order, double map_resolution, int peak_value);
-    void scan_cb(const sensor_msgs::LaserScan &laser_msg);
-    void scan_cb_deprecated(const sensor_msgs::LaserScan &laser_msg);
+    void trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_ptr);
 
     // ROS related
     ros::NodeHandle nh_, pnh_;
@@ -104,10 +105,9 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     ros::param::param<string>("~localmap_frameid", localmap_frameid_, "base_link");
 
     // ROS publishers & subscribers
-    sub_scan_ = nh_.subscribe("scan", 1, &Scan2LocalmapNode::scan_cb, this);
+    sub_scan_ = nh_.subscribe("trk3d_result", 1, &Scan2LocalmapNode::trk3d_cb, this);
     pub_map_ = nh_.advertise<nav_msgs::OccupancyGrid>("local_map", 1);
     pub_footprint_ = nh_.advertise<geometry_msgs::PolygonStamped>("footprint", 1);
-
 
     // Prepare the transformation matrix from laser to base
     tflistener_ptr_ = new tf::TransformListener();
@@ -192,10 +192,11 @@ void Scan2LocalmapNode::asymmetric_gaussian_filter(vector<int8_t> &vec, double m
 
     // Asymmetric Gaussian Filter kernel
     vector<vector<int8_t> > agf_kernel;
-    double kernel_range = 2.0 * 2;
-    for(double y = -kernel_range / 2 ; y <= kernel_range / 2 * 1.00000001; y += map_resolution){
+    double kernel_range = 5.0 * 2;
+    double max_kernel_range = kernel_range / 2 * 1.0000001;
+    for(double y = -kernel_range / 2 ; y <= max_kernel_range; y += map_resolution){
         vector<int8_t> tmp_row;
-        for(double x = -kernel_range / 2; x <= kernel_range / 2 * 1.00000001; x += map_resolution){
+        for(double x = -kernel_range / 2; x <= max_kernel_range; x += map_resolution){
             double sigma_head = std::max(target_speed * 2, 0.5);
             double sigma_side = sigma_head * 2 / 3;
             double sigma_rear = sigma_head / 2;
@@ -229,16 +230,12 @@ void Scan2LocalmapNode::asymmetric_gaussian_filter(vector<int8_t> &vec, double m
     // }
     agf_kernel[agf_kernel.size() / 2][agf_kernel[0].size() / 2] = peak_value;
 
-    cout << "kernel size: (" << agf_kernel.size() << ", " << agf_kernel[0].size() << ")" << endl;
+    // cout << "kernel size: (" << agf_kernel.size() << ", " << agf_kernel[0].size() << ")" << endl;
     if(agf_kernel.size() % 2 == 0){
         ROS_ERROR("Even kernel size! Please assign the new filter radius so that it can generate odd kernel size");
         exit(-1);
     }
-    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
-
-    exit(-1);
-
+    
     int kernel_size = agf_kernel.size();
     int bound = agf_kernel.size() / 2;
 
@@ -253,6 +250,9 @@ void Scan2LocalmapNode::asymmetric_gaussian_filter(vector<int8_t> &vec, double m
                 vec[op_idx] = agf_kernel[y + bound][x + bound];
         }
     }
+
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
 }
 
 
@@ -304,8 +304,9 @@ void Scan2LocalmapNode::butterworth_filter_generate(double filter_radius, int fi
 }
 
 
-void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
+void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_ptr) {
     // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+    sensor_msgs::LaserScan laser_msg = msg_ptr->scan;
 
     // Convert laserscan to pointcloud:  laserscan --> ROS PointCloud2 --> PCL PointCloudXYZ
     sensor_msgs::PointCloud2 cloud_msg;
@@ -329,26 +330,46 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
     int map_height = localmap_ptr_->info.height;
     int map_limit = map_width * map_height;
 
-    for(int i = 0; i < cloud_transformed->points.size(); i++) {
-        double laser_x = cloud_transformed->points[i].x;
-        double laser_y = cloud_transformed->points[i].y;
-        if(fabs(laser_x) > map_height * resolution / 2)
-            continue;
-        else if(fabs(laser_y) > map_width * resolution / 2)
-            continue;
+    for(int i = 0; i < msg_ptr->trks_list.size(); i++) {
+        double laser_x = msg_ptr->trks_list[i].x;
+        double laser_y = msg_ptr->trks_list[i].y;
+        double yaw = msg_ptr->trks_list[i].yaw;
+        double speed = std::hypot(msg_ptr->trks_list[i].vx, msg_ptr->trks_list[i].vy);
 
-        // Add wall(non-walkable) space
         int map_x = ((laser_x - map_origin_x) / resolution);
         int map_y = ((laser_y - map_origin_y) / resolution);
         int idx = map_y * map_width + map_x;
-        
+
         if((0 < idx) && (idx < map_limit)){
             if(localmap_ptr_->data[idx] == 100)
                 continue;
-            // else if(is_obstacle_inside_robot(laser_x, laser_y))
-            butterworth_filter(localmap_ptr_->data, map_width, map_height, idx, 100);
+            else if(speed < 0.4)
+                continue;
+            
+            asymmetric_gaussian_filter(localmap_ptr_->data, resolution, map_width, map_height, idx, yaw, speed / 2, 100);
+            // butterworth_filter(localmap_ptr_->data, map_width, map_height, idx, 100);
+
         }
     }
+    // for(int i = 0; i < cloud_transformed->points.size(); i++) {
+    //     double laser_x = cloud_transformed->points[i].x;
+    //     double laser_y = cloud_transformed->points[i].y;
+    //     if(fabs(laser_x) > map_height * resolution / 2)
+    //         continue;
+    //     else if(fabs(laser_y) > map_width * resolution / 2)
+    //         continue;
+
+    //     int map_x = ((laser_x - map_origin_x) / resolution);
+    //     int map_y = ((laser_y - map_origin_y) / resolution);
+    //     int idx = map_y * map_width + map_x;
+        
+    //     if((0 < idx) && (idx < map_limit)){
+    //         if(localmap_ptr_->data[idx] == 100)
+    //             continue;
+    //         // else if(is_obstacle_inside_robot(laser_x, laser_y))
+    //         butterworth_filter(localmap_ptr_->data, map_width, map_height, idx, 100);
+    //     }
+    // }
 
     // Publish localmap
     ros::Time now = ros::Time::now();
@@ -357,64 +378,6 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
 
     // Publish footprint
     footprint_ptr_->header.stamp = now;
-    pub_footprint_.publish(*footprint_ptr_);
-
-    // std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-    // std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
-}
-
-
-void Scan2LocalmapNode::scan_cb_deprecated(const sensor_msgs::LaserScan &laser_msg) {
-    // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-
-    std::fill(localmap_ptr_->data.begin(), localmap_ptr_->data.end(), 0);
-
-    double angle_min = laser_msg.angle_min;
-    double angle_max = laser_msg.angle_max;
-    double angle_increment = laser_msg.angle_increment;
-    double resolution = localmap_ptr_->info.resolution;
-    double map_origin_x = localmap_ptr_->info.origin.position.x;
-    double map_origin_y = localmap_ptr_->info.origin.position.y;
-    int map_width = localmap_ptr_->info.width;
-    int map_height = localmap_ptr_->info.height;
-    int map_limit = map_width * map_height;
-
-    // Local map
-    for(int i = 0; angle_min + angle_increment * i <= angle_max; ++i) {
-        double angle_laser = angle_min + angle_increment * i;
-        double laser_x = laser_msg.ranges[i] * cos(angle_laser);
-        double laser_y = laser_msg.ranges[i] * sin(angle_laser);
-
-        if (laser_msg.ranges[i] < laser_msg.range_min || laser_msg.ranges[i] > laser_msg.range_max)
-            continue;
-        else if(fabs(laser_x) > map_height * resolution / 2)
-            continue;
-        else if(fabs(laser_y) > map_width * resolution / 2)
-            continue;
-
-        // Add wall(non-walkable) space
-        int map_x = ((laser_x - map_origin_x) / resolution);
-        int map_y = ((laser_y - map_origin_y) / resolution);
-        int idx = map_y * map_width + map_x;
-        
-        if((0 < idx) && (idx < map_limit)){
-            if(localmap_ptr_->data[idx] == 100)
-                continue;
-            // else if(is_obstacle_inside_robot(laser_x, laser_y))
-            // gauss_filter(localmap_ptr_->data, map_width, map_height, idx, 7, 100);
-            butterworth_filter(localmap_ptr_->data, map_width, map_height, idx, 100);
-        }
-    }
-
-    // Publish localmap
-    ros::Time now = ros::Time::now();
-    localmap_ptr_->header.stamp = now;
-    localmap_ptr_->header.frame_id = laser_msg.header.frame_id;
-    pub_map_.publish(*localmap_ptr_);
-
-    // Publish footprint
-    footprint_ptr_->header.stamp = now;
-    footprint_ptr_->header.frame_id = laser_msg.header.frame_id;
     pub_footprint_.publish(*footprint_ptr_);
 
     // std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
