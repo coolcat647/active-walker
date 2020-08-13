@@ -2,7 +2,15 @@
 The repo is prepared for the active walker project for elders or people in mobility impaired.
 
 ## Prerequisite
-
+a. Dependencies
+```bash
+$ sudo apt-get install -y libavcodec-dev \
+  libswscale-dev \
+  ros-melodic-driver-base \
+  ros-melodic-vision-opencv \
+  ros-melodic-pcl-ros \
+  ros-melodic-camera-info-manager
+```
 
 ## Setup 
 a. Compile and build all packages
