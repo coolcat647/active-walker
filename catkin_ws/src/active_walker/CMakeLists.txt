@@ -173,13 +173,6 @@ target_link_libraries(scan_image_combine_node
 )
 add_dependencies(scan_image_combine_node walker_msgs_generate_messages_cpp)
 
-add_executable(show_scan_image_node_old src/show_scan_image_node_old.cpp)
-target_link_libraries(show_scan_image_node_old
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-  ${EIGEN3_LIBRARIES}
-)
-
 #############
 ## Install ##
 #############
