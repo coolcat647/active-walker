@@ -154,8 +154,8 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     sync_->registerCallback(boost::bind(&ScanImageCombineNode::img_scan_cb, this, _1, _2));
 
     // ROS service client
-    ROS_INFO_STREAM("Wait for yolo detection service in 10 seconds...");
-    if(!ros::service::waitForService(yolo_srv_name, ros::Duration(10.0))) {
+    ROS_INFO_STREAM("Wait for yolo detection service in 20 seconds...");
+    if(!ros::service::waitForService(yolo_srv_name, ros::Duration(20.0))) {
         ROS_ERROR("Cannot get the detection service: %s. Aborting...", yolo_srv_name.c_str());
         exit(-1);
     }

@@ -11,13 +11,19 @@ $ sudo apt-get install -y libavcodec-dev \
   ros-melodic-driver-base \
   ros-melodic-vision-opencv \
   ros-melodic-pcl-ros \
-  ros-melodic-camera-info-manager
+  ros-melodic-camera-info-manager \
+  python-pip \
+  python3-pip
+
+$ pip2 install --user empy
 
 $ pip3 install --user rospkg \
+  empy \
   llvmlite==0.32.1 \
   numba==0.43.1 \
   scipy==1.4.1 \
-  filterpy==1.4.5
+  filterpy==1.4.5 \
+  gdown
 ```
 
 ## Setup 
@@ -25,6 +31,12 @@ a. Build the packages with **catkin_make** tool
 ```bash
 $ cd active-walker/catkin_ws
 $ source compile_py36.sh
+```
+b. Download detection model
+```bash
+# In the "catkin_ws" directory
+$ source devel/setup.sh
+$ rosrun yolov4_pytorch download_weights.py
 ```
 
 ___

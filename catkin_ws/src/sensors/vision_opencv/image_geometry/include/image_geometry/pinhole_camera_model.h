@@ -7,7 +7,6 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <stdexcept>
 #include <string>
-#include "exports.h"
 
 namespace image_geometry {
 
@@ -21,7 +20,7 @@ public:
  * \brief Simplifies interpreting images geometrically using the parameters from
  * sensor_msgs/CameraInfo.
  */
-class IMAGE_GEOMETRY_DECL PinholeCameraModel
+class PinholeCameraModel
 {
 public:
 
