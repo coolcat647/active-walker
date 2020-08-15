@@ -160,7 +160,7 @@ void Scan2LocalmapNode::asymmetric_gaussian_filter(vector<int8_t> &vec, double m
 
     // Asymmetric Gaussian Filter kernel
     vector<vector<int8_t> > agf_kernel;
-    double kernel_range = 2.0 * 2;
+    double kernel_range = 2.4 * 2;
     double max_kernel_range = kernel_range / 2 * 1.0000001;
     for(double y = -kernel_range / 2 ; y <= max_kernel_range; y += map_resolution){
         vector<int8_t> tmp_row;
@@ -305,8 +305,8 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
         else if(fabs(laser_y) > map_width * resolution / 2)
             continue;
 
-        int map_x = ((laser_x - map_origin_x) / resolution);
-        int map_y = ((laser_y - map_origin_y) / resolution);
+        int map_x = std::round((laser_x - map_origin_x) / resolution);
+        int map_y = std::round((laser_y - map_origin_y) / resolution);
         int idx = map_y * map_width + map_x;
         
         if((0 < idx) && (idx < map_limit)){
@@ -331,8 +331,8 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
         double speed = std::hypot(msg_ptr->trks_list[i].vx, msg_ptr->trks_list[i].vy);
 
         // Calculate object position in local map
-        int map_x = ((pt_base.getX() - map_origin_x) / resolution);
-        int map_y = ((pt_base.getY() - map_origin_y) / resolution);
+        int map_x = std::round((pt_base.getX() - map_origin_x) / resolution);
+        int map_y = std::round((pt_base.getY() - map_origin_y) / resolution);
         int idx = map_y * map_width + map_x;
 
         if((0 < idx) && (idx < map_limit) && (speed > 0.1)){

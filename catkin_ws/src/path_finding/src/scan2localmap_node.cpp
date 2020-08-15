@@ -302,8 +302,8 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
             continue;
 
         // Add wall(non-walkable) space
-        int map_x = ((laser_x - map_origin_x) / resolution);
-        int map_y = ((laser_y - map_origin_y) / resolution);
+        int map_x = std::round((laser_x - map_origin_x) / resolution);
+        int map_y = std::round((laser_y - map_origin_y) / resolution);
         int idx = map_y * map_width + map_x;
         
         if((0 < idx) && (idx < map_limit)){
@@ -356,8 +356,8 @@ void Scan2LocalmapNode::scan_cb_deprecated(const sensor_msgs::LaserScan &laser_m
             continue;
 
         // Add wall(non-walkable) space
-        int map_x = ((laser_x - map_origin_x) / resolution);
-        int map_y = ((laser_y - map_origin_y) / resolution);
+        int map_x = std::round((laser_x - map_origin_x) / resolution);
+        int map_y = std::round((laser_y - map_origin_y) / resolution);
         int idx = map_y * map_width + map_x;
         
         if((0 < idx) && (idx < map_limit)){
