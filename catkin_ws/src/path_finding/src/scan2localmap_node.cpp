@@ -260,7 +260,7 @@ void Scan2LocalmapNode::butterworth_filter_generate(double filter_radius, int fi
         cout << endl;
     }
 
-    cout << "kernel size: (" << inflation_kernel_.size() << ", " << inflation_kernel_[0].size() << ")" << endl;
+    cout << "Inflation kernel size: (" << inflation_kernel_.size() << ", " << inflation_kernel_[0].size() << ")" << endl;
     if(inflation_kernel_.size() % 2 == 0){
         ROS_ERROR("Even kernel size! Please assign the new filter radius so that it can generate odd kernel size");
         exit(-1);
