@@ -341,7 +341,7 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
     }
     
     // Publish localmap
-    ros::Time now = ros::Time::now();
+    ros::Time now = ros::Time(0);
     localmap_ptr_->header.stamp = now;
     pub_map_.publish(*localmap_ptr_);
 

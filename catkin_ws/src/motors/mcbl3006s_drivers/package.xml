@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>mcdc3006s_drivers</name>
+  <name>mcbl3006s_drivers</name>
   <version>0.0.0</version>
-  <description>The mcdc3006s_drivers package</description>
+  <description>The mcbl3006s_drivers package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
@@ -19,7 +19,7 @@
   <!-- Url tags are optional, but multiple are allowed, one per tag -->
   <!-- Optional attribute type can be: website, bugtracker, or repository -->
   <!-- Example: -->
-  <!-- <url type="website">http://wiki.ros.org/mcdc3006s_drivers</url> -->
+  <!-- <url type="website">http://wiki.ros.org/mcbl3006s_drivers</url> -->
 
 
   <!-- Author tags are optional, multiple are allowed, one per tag -->

@@ -314,7 +314,7 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
     }
 
     // Publish localmap
-    ros::Time now = ros::Time::now();
+    ros::Time now = ros::Time(0);
     localmap_ptr_->header.stamp = now;
     pub_map_.publish(*localmap_ptr_);
 
