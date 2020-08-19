@@ -43,14 +43,17 @@ DiffDriveNode::DiffDriveNode(){
                                                    this);   
     int baudrate;
     bool flag_motor_disable = false;
-    ros::param::param<int>("~baud", baudrate, 115200);
+    // User-accessible parameters
+    ros::param::param<bool>("~motor_disable", flag_motor_disable, false);
     ros::param::param<std::string>("~port_left", serial_name_l_, "/dev/ttyUSB1");  // /dev/walker_motor_left
     ros::param::param<std::string>("~port_right", serial_name_r_, "/dev/ttyUSB0"); // /dev/walker_motor_right
+    
+    // Fixed parameters
+    ros::param::param<int>("~baud", baudrate, 115200);
     ros::param::param<double>("~wheel_radius", wheel_radius_, 0.0625);          // 0.105
     ros::param::param<double>("~wheels_distance", wheels_distance_, 0.6);       // 0.59
     ros::param::param<double>("~gear_ratio", gear_ratio_, 14.0);                // 13.69863
-    ros::param::param<bool>("~motor_disable", flag_motor_disable, false);
-
+    
     // Timer related
     double command_interval;                                               
     ros::param::param<double>("~command_interval", command_interval, 0.1);     // Car command time interval
@@ -199,22 +202,31 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
 
     // Odom message preparing
     geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(robot_theta_);
-    geometry_msgs::TransformStamped odom_tf_msg;
-    odom_tf_msg.header.stamp = current_time;
-    odom_tf_msg.header.frame_id = "odom";
-    odom_tf_msg.child_frame_id = "base_link";
-    odom_tf_msg.transform.translation.x = robot_x_;
-    odom_tf_msg.transform.translation.y = robot_y_;
-    odom_tf_msg.transform.rotation = odom_quat;
-    odom_broadcaster_.sendTransform(odom_tf_msg);
+    // geometry_msgs::TransformStamped odom_tf_msg;
+    // odom_tf_msg.header.stamp = current_time;
+    // odom_tf_msg.header.frame_id = "odom";
+    // odom_tf_msg.child_frame_id = "base_link";
+    // odom_tf_msg.transform.translation.x = robot_x_;
+    // odom_tf_msg.transform.translation.y = robot_y_;
+    // odom_tf_msg.transform.rotation = odom_quat;
+    // odom_broadcaster_.sendTransform(odom_tf_msg);
 
-    nav_msgs::Odometry odom;
-    odom.header.stamp = current_time;
-    odom.header.frame_id = "odom";
-    odom.pose.pose.position.x = robot_x_;
-    odom.pose.pose.position.y = robot_y_;
-    odom.pose.pose.orientation = odom_quat;
-    pub_odom_.publish(odom);
+    nav_msgs::Odometry odom_msg;
+    odom_msg.header.stamp = current_time;
+    odom_msg.header.frame_id = "odom";
+    odom_msg.pose.pose.position.x = robot_x_;
+    odom_msg.pose.pose.position.y = robot_y_;
+    odom_msg.pose.pose.orientation = odom_quat;
+    odom_msg.pose.covariance[0]  = 1e2;    // covariance of x 
+    odom_msg.pose.covariance[7]  = 1e2;    // covariance of y
+    odom_msg.pose.covariance[35] = 1e2;    // covariance of yaw
+    odom_msg.pose.covariance[14] = 1e10;    // yaw x axis
+    odom_msg.pose.covariance[21] = 1e10;    // yaw y axis
+    odom_msg.pose.covariance[28] = 1e10;    // yaw z axis
+    odom_msg.twist.twist.linear.x = real_v;
+    odom_msg.twist.twist.angular.y = real_omega;
+
+    pub_odom_.publish(odom_msg);
 
     last_pulsel_ = pulsel;
     last_pulser_ = pulser;
@@ -261,7 +273,7 @@ void DiffDriveNode::motors_init(int baudrate, bool flag_motor_disable) {
 
 void DiffDriveNode::sigint_cb(int sig) {
     cout << "\nNode name: " << ros::this_node::getName() << " is shutdown." << endl;
-    serial_mutex.unlock();
+    // serial_mutex.unlock();
     // All the default sigint handler does is call shutdown()
     ros::shutdown();
 }
