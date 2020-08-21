@@ -73,7 +73,7 @@ AstarPathfindingNode::AstarPathfindingNode(ros::NodeHandle nh, ros::NodeHandle p
 
     // ROS publishers & subscribers
     sub_localmap_ = nh_.subscribe("local_map", 5, &AstarPathfindingNode::localmap_cb, this);
-    pub_walkable_path_ = nh_.advertise<nav_msgs::Path>("workable_path", 1);
+    pub_walkable_path_ = nh_.advertise<nav_msgs::Path>("walkable_path", 1);
     pub_marker_array_ = nh_.advertise<visualization_msgs::MarkerArray>("path_vis", 1);
 
     // Marker init
