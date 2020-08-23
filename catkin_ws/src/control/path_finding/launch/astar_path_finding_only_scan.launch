@@ -5,7 +5,7 @@
     <arg name="localmap_frameid" default="base_link" />
 
     <arg name="solver_timeout_ms" default="40.0" />
-    <arg name="subgoal_timer_interval" default="3.0" />
+    <arg name="subgoal_timer_interval" default="0.5" />
 
     <!-- Scan to local map node -->
     <node name="scan2localmap_node" pkg="path_finding" type="scan2localmap_node" required="true" output="screen">

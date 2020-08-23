@@ -46,7 +46,7 @@ namespace Astar {
     class Solver {
     public:
         Solver();
-        bool solve_ros(nav_msgs::OccupancyGrid::ConstPtr map_msg_ptr, nav_msgs::Path* path, int start_idx, int goal_idx, double timeout_ms);
+        bool solve_ros(nav_msgs::OccupancyGrid::ConstPtr map_msg_ptr, nav_msgs::Path::Ptr path, int start_idx, int goal_idx, double timeout_ms);
         bool is_goal(Grid2D grid);
         bool is_collision(Grid2D grid);
         int against_wall_cost(Grid2D grid);

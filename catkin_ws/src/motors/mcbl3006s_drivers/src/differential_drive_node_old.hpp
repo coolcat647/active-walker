@@ -3,6 +3,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <iomanip>
+#include <mutex>
 #include "serial/serial.h"
 
 // For ROS
@@ -34,9 +35,10 @@ public:
 
 private:
     void emergency_stop(void);
-    void motors_init(int baudrate);
+    void motors_init(int baudrate, bool flag_motor_disable);
     // ROS timer callback
     void timer_cb(const ros::TimerEvent& event);
+    void timer_cb2(const ros::TimerEvent& event);
     // ROS subscriber callback
     void cmd_cb(const geometry_msgs::Twist& msg);
     // ROS service callback
@@ -53,23 +55,24 @@ private:
 
     // For odometry feedback
     bool is_first_odom_ = true;
-    volatile int pulsel_, pulser_;
     volatile int last_pulsel_, last_pulser_;
     volatile double robot_x_, robot_y_, robot_theta_;
-    volatile double desire_robot_x_, desire_robot_y_, desire_robot_theta_;
 
     // Motor configure related
-    string ser_name_l_;
-    string ser_name_r_;
+    string serial_name_l_;
+    string serial_name_r_;
     double wheel_radius_;
-    double wheel_dis_;
+    double wheels_distance_;
     double gear_ratio_;
 
-
-
-
     // Timer related
-    double timer_interval_;                         // ROS Timer interval
-    double wtd_interval_;                           // Watchdog timer interval
-    ros::Time last_cmd_time_ = ros::Time();
+    double watchdog_interval_;                          // Watchdog timer interval
+    ros::Time last_cmd_time_;
+    ros::Time last_feedback_time_;
+
+    int cmd_timer_cnt_;
+    int max_timer_counter_;
+
+    geometry_msgs::TransformStamped odom_tf_msg_;
+    nav_msgs::Odometry odom_msg_;
 };

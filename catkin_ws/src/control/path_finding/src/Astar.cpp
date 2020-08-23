@@ -49,7 +49,7 @@ Astar::Node* Astar::Solver::find_node(std::vector<Node*>& nodes_list, Grid2D gri
     return nullptr;
 }
 
-bool Astar::Solver::solve_ros(nav_msgs::OccupancyGrid::ConstPtr map_msg_ptr, nav_msgs::Path* path, int start_idx, int goal_idx, double timeout_ms) {
+bool Astar::Solver::solve_ros(nav_msgs::OccupancyGrid::ConstPtr map_msg_ptr, nav_msgs::Path::Ptr path, int start_idx, int goal_idx, double timeout_ms) {
     // map_ptr_ = nav_msgs::OccupancyGrid::Ptr(new nav_msgs::OccupancyGrid(*map_msg_ptr));
     map_ptr_ = map_msg_ptr;
     int map_width = (int)map_ptr_->info.width;

@@ -111,17 +111,17 @@ void FakeMapNode::timer_cb(const ros::TimerEvent& event){
     map_msg_.header.stamp = ros::Time::now();
     pub_map_.publish(map_msg_);
 
-    nav_msgs::Path result_path;
-    result_path.header.frame_id = map_msg_.header.frame_id;
+    nav_msgs::Path::Ptr walkable_path_ptr = nav_msgs::Path::Ptr(new nav_msgs::Path());
+    walkable_path_ptr->header.frame_id = map_msg_.header.frame_id;
     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
     nav_msgs::OccupancyGrid::ConstPtr map_msg_ptr(new nav_msgs::OccupancyGrid(map_msg_));
 
-    bool flag_success = solver_.solve_ros(map_msg_ptr, &result_path, 0, mapinfo_.width * mapinfo_.height -1, 10.0);
+    bool flag_success = solver_.solve_ros(map_msg_ptr, walkable_path_ptr, 0, mapinfo_.width * mapinfo_.height -1, 10.0);
     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
     std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
 
-    pub_path_.publish(result_path);
+    pub_path_.publish(walkable_path_ptr);
 }
 
 void sigint_cb(int sig) {

@@ -30,12 +30,11 @@ public:
     void send_motor_cmd(serial::Serial* ser, const char* cmd);
     int ask_motor_feedback(serial::Serial* ser, const char* cmd);
 
-    serial::Serial* ser_l_;
-    serial::Serial* ser_r_;
+    serial::Serial* serial_port_ptr_;
 
 private:
     void emergency_stop(void);
-    void motors_init(int baudrate, bool flag_motor_disable);
+    void motors_init(string serial_device, int baudrate, bool flag_motor_disable);
     // ROS timer callback
     void timer_cb(const ros::TimerEvent& event);
     void timer_cb2(const ros::TimerEvent& event);
@@ -59,8 +58,6 @@ private:
     volatile double robot_x_, robot_y_, robot_theta_;
 
     // Motor configure related
-    string serial_name_l_;
-    string serial_name_r_;
     double wheel_radius_;
     double wheels_distance_;
     double gear_ratio_;

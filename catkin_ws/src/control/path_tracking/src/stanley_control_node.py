@@ -4,6 +4,7 @@ import threading
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
+import time
 from CubicSpline import cubic_spline_planner
 
 # ROS
@@ -18,13 +19,18 @@ Kp = 1.0  # speed proportional gain
 dt = 0.1  # [s] time difference
 L = 2.9  # [m] Wheel base of vehicle
 max_steer = np.radians(30.0)  # [rad] max steering angle
-
+CMD_RATE = 5.0
 
 class StanleyControlNode(object):
     def __init__(self):
         rospy.on_shutdown(self.shutdown_cb)
 
+        # Path related
         self.flat_path = []
+        self.is_new_path = False
+        self.path_update_mutex = threading.Lock()
+
+        # Odom related
         self.robot_pose = Pose2D()
         self.robot_twist = Twist()
         self.pose_update_mutex = threading.Lock()
@@ -41,12 +47,12 @@ class StanleyControlNode(object):
         ### Critical section start ###
         self.pose_update_mutex.acquire()
         self.robot_pose.x = msg.pose.pose.position.x
-        self.robot_pose.y = msg.pose.pose.positino.y
-        euler_angle = euler_from_quaternion([msg.piose.pose.orientation.x, 
+        self.robot_pose.y = msg.pose.pose.position.y
+        euler_angle = euler_from_quaternion([msg.pose.pose.orientation.x, 
                                             msg.pose.pose.orientation.y, 
                                             msg.pose.pose.orientation.z, 
                                             msg.pose.pose.orientation.w])
-        self.robot_pose.yaw = euler_angle[2]
+        self.robot_pose.theta = euler_angle[2]
         self.robot_twist = msg.twist.twist
         self.pose_update_mutex.release()
         ### Critical section end ###
@@ -61,9 +67,14 @@ class StanleyControlNode(object):
         cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(
         path_x_raw, path_y_raw, ds=0.2)
 
+        ### Critical section start ###
+        self.path_update_mutex.acquire()
         self.flat_path = []
         for i in range(len(cx)):
-            self.flat_path.append(Pose2D(x=cx[i], y=cy[i], yaw=cyaw[i]))
+            self.flat_path.append(Pose2D(x=cx[i], y=cy[i], theta=cyaw[i]))
+        self.is_new_path = True
+        self.path_update_mutex.release()
+        ### Critical section end ###
 
         # # Visualiztion
         # flat_path_msg = Path()
@@ -78,7 +89,7 @@ class StanleyControlNode(object):
         # self.pub_path_flat.publish(flat_path_msg)
 
 
-    def pid_control(target, current):
+    def pid_control(self, target, current):
         """
         Proportional control for the speed.
 
@@ -89,7 +100,7 @@ class StanleyControlNode(object):
         return Kp * (target - current)
 
 
-    def stanley_control(robot_pose, robot_twist, target_path, last_target_idx):
+    def stanley_control(self, robot_pose, robot_twist, target_path, last_target_idx):
         """
         Stanley steering control.
 
@@ -98,22 +109,25 @@ class StanleyControlNode(object):
         :param last_target_idx: (int)
         :return: (float, int)
         """
-        current_target_idx, error_front_axle = calc_target_index(robot_pose, target_path)
+        current_target_idx, error_front_axle = self.calc_target_index(robot_pose, target_path)
 
         if last_target_idx >= current_target_idx:
             current_target_idx = last_target_idx
 
         # theta_e corrects the heading error
-        theta_e = normalize_angle(target_path[current_target_idx].yaw - robot_pose.yaw)
+        theta_e = self.normalize_angle(target_path[current_target_idx].theta - robot_pose.theta)
         # theta_d corrects the cross track error
-        theta_d = np.arctan2(k * error_front_axle, robot_twist.linear.x * np.cos(robot_twist.angular.z)) ########################## TODO
+        # theta_d = np.arctan2(k * error_front_axle, robot_twist.linear.x * np.cos(robot_twist.angular.z)) ########################## TODO: Check
+        theta_d = np.arctan2(k * error_front_axle, robot_twist.linear.x) ########################## TODO: Check
+        
+
         # Steering control
         delta = theta_e + theta_d
 
         return delta, current_target_idx
 
 
-    def normalize_angle(angle):
+    def normalize_angle(self, angle):
         """
         Normalize an angle to [-pi, pi].
 
@@ -129,7 +143,7 @@ class StanleyControlNode(object):
         return angle
 
 
-    def calc_target_index(robot_pose, target_path):
+    def calc_target_index(self, robot_pose, target_path):
         """
         Compute index in the trajectory list of the target.
 
@@ -139,8 +153,8 @@ class StanleyControlNode(object):
         :return: (int, float)
         """
         # Calc front axle position
-        fx = robot_pose.x + L * np.cos(robot_pose.yaw)
-        fy = robot_pose.y + L * np.sin(robot_pose.yaw)
+        fx = robot_pose.x + L * np.cos(robot_pose.theta)
+        fy = robot_pose.y + L * np.sin(robot_pose.theta)
 
         # Search nearest point index
         dx = []
@@ -150,16 +164,21 @@ class StanleyControlNode(object):
             dy.append(fy - tmp_pose.y)
         d = np.hypot(dx, dy)
         target_idx = np.argmin(d)
+        # print("target_idx:", target_idx)
 
         # Project RMS error onto front axle vector
-        front_axle_vec = [-np.cos(robot_pose.yaw + np.pi / 2),
-                          -np.sin(robot_pose.yaw + np.pi / 2)]
+        front_axle_vec = [-np.cos(robot_pose.theta + np.pi / 2),
+                          -np.sin(robot_pose.theta + np.pi / 2)]
         error_front_axle = np.dot([dx[target_idx], dy[target_idx]], front_axle_vec)
 
         return target_idx, error_front_axle
 
 
     def shutdown_cb(self):
+        if self.path_update_mutex.locked():
+            self.path_update_mutex.release()
+        if self.pose_update_mutex.locked():
+            self.pose_update_mutex.release()
         rospy.loginfo("Shutdown " + rospy.get_name())
         
 
@@ -168,14 +187,43 @@ if __name__ == '__main__':
     node = StanleyControlNode()
     
     target_speed = 0.4
+    is_first_run = True
+    last_run_time = None
 
-    rate = rospy.Rate(5.0) # 5hz
+    # Wait for the first flat path comming
+    while len(node.flat_path) == 0 and not rospy.is_shutdown():
+        rospy.sleep(0.1)
+    while node.pose_update_mutex.locked() and not rospy.is_shutdown():
+        rospy.sleep(0.1)
+    target_idx, _  = node.calc_target_index(node.robot_pose, node.flat_path)
+
+    rate = rospy.Rate(CMD_RATE)
     while not rospy.is_shutdown():
-        # node.flat_path
-        while node.pose_update_mutex.locked():
+        if is_first_run:
+            is_first_run = False
+            last_run_time = rospy.Time.now()
+            continue
+        current_run_time = rospy.Time.now()
+
+        # It promise that you always get the newest robot odometry before sending the control command
+        while node.pose_update_mutex.locked() or node.path_update_mutex.locked():
             pass
 
-        accel_linear = pid_control(target_speed, node.robot_twist.linear.x)
+        if node.is_new_path == True:
+            node.is_new_path = False
+            target_idx, _  = node.calc_target_index(node.robot_pose, node.flat_path)
 
+        accel_linear = node.pid_control(target_speed, node.robot_twist.linear.x)
+        delta_omega, target_idx = node.stanley_control(node.robot_pose, node.robot_twist, node.flat_path, target_idx)
+        # state.update(accel_linear, di)
+
+        dt = (current_run_time - last_run_time).to_sec()
+        cmd_msg = Twist()
+        cmd_msg.linear.x = node.robot_twist.linear.x + accel_linear * dt
+        cmd_msg.angular.z = delta_omega * dt
+        node.pub_cmd.publish(cmd_msg)
+
+        # time += dt
+        last_run_time = current_run_time
         rate.sleep()
         

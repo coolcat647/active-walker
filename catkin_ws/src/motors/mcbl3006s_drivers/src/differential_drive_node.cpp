@@ -43,10 +43,10 @@ DiffDriveNode::DiffDriveNode(){
                                                    this);   
     int baudrate;
     bool flag_motor_disable = false;
+    string serial_device;
     // User-accessible parameters
     ros::param::param<bool>("~motor_disable", flag_motor_disable, false);
-    ros::param::param<std::string>("~port_left", serial_name_l_, "/dev/ttyUSB1");  // /dev/walker_motor_left
-    ros::param::param<std::string>("~port_right", serial_name_r_, "/dev/ttyUSB0"); // /dev/walker_motor_right
+    ros::param::param<std::string>("~serial_device", serial_device, "/dev/ttyUSB0");  // /dev/walker_motor_left
     
     // Fixed parameters
     ros::param::param<int>("~baud", baudrate, 115200);
@@ -59,7 +59,7 @@ DiffDriveNode::DiffDriveNode(){
     ros::param::param<double>("~command_interval", command_interval, 0.1);     // Car command time interval
     ros::param::param<double>("~watchdog_interval", watchdog_interval_, 0.5);   // Watchdog for robot safety
 
-    motors_init(baudrate, flag_motor_disable);
+    motors_init(serial_device, baudrate, flag_motor_disable);
     
     
     double odom_timer_interval = 0.025;
@@ -99,13 +99,16 @@ void DiffDriveNode::send_motor_cmd(serial::Serial* ser, const char* cmd){
     } catch(serial::SerialException& e){
         ROS_ERROR_STREAM("Cannot read the response from motor controller, emergency stop");
         emergency_stop();
-        // exit(-1);
+        serial_mutex.unlock();
+        exit(-1);
     }
 
     if(motor_feedback != "OK\r\n"){
         ROS_ERROR_STREAM("Do not get \"OK\" response but get \"" + motor_feedback + "\" from the motor.");
         emergency_stop();
-        // exit(-1);
+        serial_mutex.unlock();
+        exit(-1);
+
     }
     serial_mutex.unlock();
     // Critical section end
@@ -130,6 +133,7 @@ int DiffDriveNode::ask_motor_feedback(serial::Serial* ser, const char* cmd){
     } catch(serial::SerialException& e){
         cout << COLOR_RED << "Cannot read the response from motor controller, emergency stop" << COLOR_NC << endl;
         emergency_stop();
+        serial_mutex.unlock();
         exit(-1);
     }
 
@@ -141,10 +145,10 @@ int DiffDriveNode::ask_motor_feedback(serial::Serial* ser, const char* cmd){
 
 
 void DiffDriveNode::emergency_stop(void) {
-    serial_mutex.lock();
-    ser_l_->write("V0\r\n");
-    ser_r_->write("V0\r\n");
-    serial_mutex.unlock();
+    // serial_mutex.lock();
+    serial_port_ptr_->write("1V0\r\n");
+    serial_port_ptr_->write("2V0\r\n");
+    // serial_mutex.unlock();
 }
 
 
@@ -159,23 +163,23 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
         }
         double     v = cmd_msg_.linear.x;
         double omega = cmd_msg_.angular.z;
-        double desire_rpml = (2 * v - omega * wheels_distance_) / (2 * wheel_radius_) / M_PI / 2 * 60 * gear_ratio_;
-        double desire_rpmr = (2 * v + omega * wheels_distance_) / (2 * wheel_radius_) / M_PI / 2 * 60 * gear_ratio_;
+        double desire_rpml = std::round((2 * v - omega * wheels_distance_) / (2 * wheel_radius_) / M_PI / 2 * 60 * gear_ratio_);
+        double desire_rpmr = std::round((2 * v + omega * wheels_distance_) / (2 * wheel_radius_) / M_PI / 2 * 60 * gear_ratio_);
 
         // Send cmd to motor & get motor pulse
         char cmd[15];
-        sprintf(cmd, "V%d", (int)desire_rpml);
-        send_motor_cmd(ser_l_, cmd);
-        sprintf(cmd, "V%d", -(int)desire_rpmr);     // notice the "minus" note due to right motor setup
-        send_motor_cmd(ser_r_, cmd);
+        sprintf(cmd, "1V%d", (int)desire_rpml);
+        send_motor_cmd(serial_port_ptr_, cmd);
+        sprintf(cmd, "2V%d", -(int)desire_rpmr);     // notice the "minus" note due to right motor setup
+        send_motor_cmd(serial_port_ptr_, cmd);
 
         // Reset timer counter
         cmd_timer_cnt_ = 0;
     }
 
     // Read pulse from motors
-    int pulsel = ask_motor_feedback(ser_l_, "POS");
-    int pulser = ask_motor_feedback(ser_r_, "POS");
+    int pulsel = ask_motor_feedback(serial_port_ptr_, "1POS");
+    int pulser = ask_motor_feedback(serial_port_ptr_, "2POS");
     
     // Wheel odometry process
     if(is_first_odom_) {
@@ -202,14 +206,14 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
 
     // Odom message preparing
     geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(robot_theta_);
-    // geometry_msgs::TransformStamped odom_tf_msg;
-    // odom_tf_msg.header.stamp = current_time;
-    // odom_tf_msg.header.frame_id = "odom";
-    // odom_tf_msg.child_frame_id = "base_link";
-    // odom_tf_msg.transform.translation.x = robot_x_;
-    // odom_tf_msg.transform.translation.y = robot_y_;
-    // odom_tf_msg.transform.rotation = odom_quat;
-    // odom_broadcaster_.sendTransform(odom_tf_msg);
+    geometry_msgs::TransformStamped odom_tf_msg;
+    odom_tf_msg.header.stamp = current_time;
+    odom_tf_msg.header.frame_id = "odom";
+    odom_tf_msg.child_frame_id = "base_link";
+    odom_tf_msg.transform.translation.x = robot_x_;
+    odom_tf_msg.transform.translation.y = robot_y_;
+    odom_tf_msg.transform.rotation = odom_quat;
+    odom_broadcaster_.sendTransform(odom_tf_msg);
 
     nav_msgs::Odometry odom_msg;
     odom_msg.header.stamp = current_time;
@@ -240,32 +244,26 @@ void DiffDriveNode::cmd_cb(const geometry_msgs::Twist& msg) {
 }
 
 
-void DiffDriveNode::motors_init(int baudrate, bool flag_motor_disable) {
+void DiffDriveNode::motors_init(string serial_device, int baudrate, bool flag_motor_disable) {
     // Motors port init
     try {
-        ser_l_ = new serial::Serial(serial_name_l_, baudrate, serial::Timeout::simpleTimeout(1000)); // timeout: 1ms
+        serial_port_ptr_ = new serial::Serial(serial_device, baudrate, serial::Timeout::simpleTimeout(1000)); // timeout: 1ms
     } catch(exception & e){
-        cout << COLOR_RED << "Can not open serial port: " << serial_name_l_ << ", please check the port is available." << COLOR_NC << endl;
-    }
-    try {
-        ser_r_ = new serial::Serial(serial_name_r_, baudrate, serial::Timeout::simpleTimeout(1000));
-    } catch(exception & e){
-        cout << COLOR_RED << "Can not open serial port: " << serial_name_r_ << ", please check the port is available." << COLOR_NC << endl;
-        exit(-1);
+        cout << COLOR_RED << "Can not open serial port: " << serial_device << ", please check the port is available." << COLOR_NC << endl;
     }
 
     // Set Acceleration and deceleration maximum
-    send_motor_cmd(ser_l_, "AC5");
-    send_motor_cmd(ser_l_, "DEC10");
-    send_motor_cmd(ser_r_, "AC5");
-    send_motor_cmd(ser_r_, "DEC10");
+    send_motor_cmd(serial_port_ptr_, "1AC5");
+    send_motor_cmd(serial_port_ptr_, "1DEC10");
+    send_motor_cmd(serial_port_ptr_, "2AC5");
+    send_motor_cmd(serial_port_ptr_, "2DEC10");
 
     if(flag_motor_disable == true) {
-        send_motor_cmd(ser_l_, "DI");
-        send_motor_cmd(ser_r_, "DI");
+        send_motor_cmd(serial_port_ptr_, "1DI");
+        send_motor_cmd(serial_port_ptr_, "2DI");
     }else{
-        send_motor_cmd(ser_l_, "EN");
-        send_motor_cmd(ser_r_, "EN");
+        send_motor_cmd(serial_port_ptr_, "1EN");
+        send_motor_cmd(serial_port_ptr_, "2EN");
     }
 
     cout << COLOR_GREEN << "Motor drivers are ready." << COLOR_NC << endl;
@@ -290,8 +288,8 @@ int main (int argc, char** argv) {
 
     // Safety concern
     serial_mutex.lock();
-    node.ser_l_->write("V0\r\n");
-    node.ser_r_->write("V0\r\n");
+    node.serial_port_ptr_->write("1V0\r\n");
+    node.serial_port_ptr_->write("2V0\r\n");
     serial_mutex.unlock();
     return 0;
 }

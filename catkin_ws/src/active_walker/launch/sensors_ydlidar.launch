@@ -2,6 +2,7 @@
 <launch>
     <arg name="laser_frame_id" default="laser_link" />
     <arg name="video_device" default="/dev/video2" />
+    <arg name="ydlidar_device" default="/dev/walker_ydlidar_sensor" />
     <arg name="camera_frame_id" default="camera_link" />
     <arg name="image_view" default="false" />
     <arg name="use_rviz" default="false" />
@@ -20,7 +21,9 @@
     </include> -->
 
     <!-- YDLiDAR G4 -->
-    <include file="$(find ydlidar)/launch/lidar.launch" />
+    <include file="$(find ydlidar)/launch/lidar.launch">
+        <arg name="ydlidar_device" value="$(arg ydlidar_device)" />
+    </include>
 
 
     <!-- Static transformation -->
