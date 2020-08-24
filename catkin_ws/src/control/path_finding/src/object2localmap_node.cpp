@@ -160,7 +160,8 @@ void Scan2LocalmapNode::asymmetric_gaussian_filter(vector<int8_t> &vec, double m
 
     // Asymmetric Gaussian Filter kernel
     vector<vector<int8_t> > agf_kernel;
-    double kernel_range = 2.4 * 2;
+    // double kernel_range = 2.4 * 2;
+    double kernel_range = 5.0 * 2;
     double max_kernel_range = kernel_range / 2 * 1.0000001;
     for(double y = -kernel_range / 2 ; y <= max_kernel_range; y += map_resolution){
         vector<int8_t> tmp_row;

@@ -248,6 +248,7 @@ void DiffDriveNode::motors_init(string serial_device, int baudrate, bool flag_mo
     // Motors port init
     try {
         serial_port_ptr_ = new serial::Serial(serial_device, baudrate, serial::Timeout::simpleTimeout(1000)); // timeout: 1ms
+        serial_port_ptr_->readline();   // Just clear buffer
     } catch(exception & e){
         cout << COLOR_RED << "Can not open serial port: " << serial_device << ", please check the port is available." << COLOR_NC << endl;
     }

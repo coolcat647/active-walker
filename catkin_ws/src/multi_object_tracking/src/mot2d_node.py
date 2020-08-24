@@ -57,6 +57,12 @@ class MultiObjectTrackingNode(object):
 
     def det_result_cb(self, msg):
         if len(msg.dets_list) == 0:
+            # If there is no detection, just pack the laserscan topic for localmap creation 
+            trk3d_array = Trk3DArray()
+            trk3d_array.header.frame_id = msg.header.frame_id
+            trk3d_array.header.stamp = rospy.Time.now()
+            trk3d_array.scan = msg.scan
+            self.pub_trk3d_result.publish(trk3d_array)
             return
         dets_list = None
         info_list = None
@@ -72,6 +78,12 @@ class MultiObjectTrackingNode(object):
         if len(dets_list.shape) == 1: dets_list = np.expand_dims(dets_list, axis=0)
         if len(info_list.shape) == 1: info_list = np.expand_dims(info_list, axis=0)
         if dets_list.shape[1] == 0:
+            # If there is no detection, just pack the laserscan topic for localmap creation
+            trk3d_array = Trk3DArray()
+            trk3d_array.header.frame_id = msg.header.frame_id
+            trk3d_array.header.stamp = rospy.Time.now()
+            trk3d_array.scan = msg.scan
+            self.pub_trk3d_result.publish(trk3d_array)
             return
 
         dets_all = {'dets': dets_list, 'info': info_list}

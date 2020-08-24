@@ -12,14 +12,16 @@ import rospy
 from geometry_msgs.msg import Twist, PoseStamped, Quaternion, Point, Pose2D
 from nav_msgs.msg import Path, Odometry
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
+from std_msgs.msg import Float32
 
 
 k = 0.5  # control gain
 Kp = 1.0  # speed proportional gain
 dt = 0.1  # [s] time difference
-L = 2.9  # [m] Wheel base of vehicle
+L = 0.6  # [m] Wheel base of vehicle
 max_steer = np.radians(30.0)  # [rad] max steering angle
 CMD_RATE = 5.0
+MAX_ANGULAR_VELOCITY = 0.8
 
 class StanleyControlNode(object):
     def __init__(self):
@@ -37,7 +39,8 @@ class StanleyControlNode(object):
 
         # ROS publisher & subscriber
         self.pub_cmd = rospy.Publisher('cmd_vel', Twist, queue_size=1)
-        # self.pub_path_flat = rospy.Publisher('flat_path', Path, queue_size=1)
+        self.pub_path_flat = rospy.Publisher('flat_path', Path, queue_size=1)
+        self.pub_tracking_progress = rospy.Publisher('tracking_progress', Float32, queue_size=1)
         self.sub_path = rospy.Subscriber("walkable_path", Path, self.path_cb, queue_size=1)
         self.sub_odom = rospy.Subscriber("wheel_odom", Odometry, self.odom_cb, queue_size=1)
         print(rospy.get_name() + ' is ready.')
@@ -61,11 +64,19 @@ class StanleyControlNode(object):
     def path_cb(self, msg):
         path_x_raw = []
         path_y_raw = []
+        rospy.logwarn("Get new path, len={}".format(len(msg.poses)))
+        if len(msg.poses) == 0:
+            self.path_update_mutex.acquire()
+            self.flat_path = []
+            self.is_new_path = True
+            self.path_update_mutex.release()
+            return
+
         for i in range(len(msg.poses)-1, 0, -1):
             path_x_raw.append(msg.poses[i].pose.position.x)
             path_y_raw.append(msg.poses[i].pose.position.y)
         cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(
-        path_x_raw, path_y_raw, ds=0.2)
+        path_x_raw, path_y_raw, ds=0.1)
 
         ### Critical section start ###
         self.path_update_mutex.acquire()
@@ -186,7 +197,7 @@ if __name__ == '__main__':
     rospy.init_node('stanley_control_node', anonymous=False)
     node = StanleyControlNode()
     
-    target_speed = 0.4
+    target_speed = 0.25
     is_first_run = True
     last_run_time = None
 
@@ -210,18 +221,46 @@ if __name__ == '__main__':
             pass
 
         if node.is_new_path == True:
+            if len(node.flat_path) == 0:
+                rospy.logwarn("No planning path, wait for new path")
+                last_run_time = current_run_time
+                node.pub_cmd.publish(Twist())
+                rate.sleep()
+                continue
             node.is_new_path = False
             target_idx, _  = node.calc_target_index(node.robot_pose, node.flat_path)
 
+        # Tracking progress
+        # rospy.logwarn("Tracking progress:{}/{}".format(target_idx+1, len(node.flat_path)))
+        node.pub_tracking_progress.publish((target_idx+1) / len(node.flat_path))
+        
+
+        # 
         accel_linear = node.pid_control(target_speed, node.robot_twist.linear.x)
         delta_omega, target_idx = node.stanley_control(node.robot_pose, node.robot_twist, node.flat_path, target_idx)
-        # state.update(accel_linear, di)
+        
 
-        dt = (current_run_time - last_run_time).to_sec()
-        cmd_msg = Twist()
-        cmd_msg.linear.x = node.robot_twist.linear.x + accel_linear * dt
-        cmd_msg.angular.z = delta_omega * dt
-        node.pub_cmd.publish(cmd_msg)
+        # Visualization
+        flat_path_msg = Path()
+        tmp_pose = PoseStamped()
+        tmp_pose.pose.position = Point(node.flat_path[target_idx].x, node.flat_path[target_idx].y, 0)
+        q = quaternion_from_euler(0, 0, node.flat_path[target_idx].theta)
+        tmp_pose.pose.orientation = Quaternion(q[0], q[1], q[2], q[3])
+        flat_path_msg.poses.append(tmp_pose)
+        flat_path_msg.header.frame_id = "odom"
+        flat_path_msg.header.stamp = rospy.Time.now()
+        node.pub_path_flat.publish(flat_path_msg)
+
+        if np.hypot(node.robot_pose.x - node.flat_path[-1].x, node.robot_pose.y - node.flat_path[-1].y) > 0.2:
+            # Car command 
+            dt = (current_run_time - last_run_time).to_sec()
+            cmd_msg = Twist()
+            cmd_msg.linear.x = node.robot_twist.linear.x + accel_linear * dt
+            # cmd_msg.angular.z = np.clip(delta_omega * dt, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY) + np.random.rand(1) - 0.5
+            cmd_msg.angular.z = np.clip(delta_omega * dt, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY)
+            node.pub_cmd.publish(cmd_msg)
+        else:
+            node.pub_cmd.publish(Twist())
 
         # time += dt
         last_run_time = current_run_time
