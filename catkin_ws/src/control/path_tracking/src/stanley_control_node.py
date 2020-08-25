@@ -64,10 +64,17 @@ class StanleyControlNode(object):
     def path_cb(self, msg):
         path_x_raw = []
         path_y_raw = []
-        rospy.logwarn("Get new path, len={}".format(len(msg.poses)))
+        # rospy.logwarn("Get new path, len={}".format(len(msg.poses)))
         if len(msg.poses) == 0:
             self.path_update_mutex.acquire()
             self.flat_path = []
+            self.is_new_path = True
+            self.path_update_mutex.release()
+            return
+        elif len(msg.poses) == 1:
+            self.path_update_mutex.acquire()
+            yaw = np.arctan2(msg.poses[i].pose.position.y - self.robot_pose.y, msg.poses[i].pose.position.x - self.robot_pose.x)
+            self.flat_path = [Pose2D(x=msg.poses[i].pose.position.x, y=msg.poses[i].pose.position.y, theta=yaw),]
             self.is_new_path = True
             self.path_update_mutex.release()
             return
@@ -203,10 +210,10 @@ if __name__ == '__main__':
 
     # Wait for the first flat path comming
     while len(node.flat_path) == 0 and not rospy.is_shutdown():
-        rospy.sleep(0.1)
+        rospy.sleep(0.5)
     while node.pose_update_mutex.locked() and not rospy.is_shutdown():
-        rospy.sleep(0.1)
-    target_idx, _  = node.calc_target_index(node.robot_pose, node.flat_path)
+        rospy.sleep(0.5)
+    # target_idx, _  = node.calc_target_index(node.robot_pose, node.flat_path)
 
     rate = rospy.Rate(CMD_RATE)
     while not rospy.is_shutdown():
@@ -221,8 +228,8 @@ if __name__ == '__main__':
             pass
 
         if node.is_new_path == True:
-            if len(node.flat_path) == 0:
-                rospy.logwarn("No planning path, wait for new path")
+            if len(node.flat_path) <= 1:
+                rospy.logwarn("Empty planning path, wait for new path")
                 last_run_time = current_run_time
                 node.pub_cmd.publish(Twist())
                 rate.sleep()
@@ -255,7 +262,7 @@ if __name__ == '__main__':
             # Car command 
             dt = (current_run_time - last_run_time).to_sec()
             cmd_msg = Twist()
-            cmd_msg.linear.x = node.robot_twist.linear.x + accel_linear * dt
+            cmd_msg.linear.x = np.clip(node.robot_twist.linear.x + accel_linear * dt, 0, target_speed)
             # cmd_msg.angular.z = np.clip(delta_omega * dt, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY) + np.random.rand(1) - 0.5
             cmd_msg.angular.z = np.clip(delta_omega * dt, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY)
             node.pub_cmd.publish(cmd_msg)

@@ -93,7 +93,7 @@ void DiffDriveNode::send_motor_cmd(serial::Serial* ser, const char* cmd){
     // Critical section start
     serial_mutex.lock();
     ser->write(cmd_plus_end);
-    usleep(50);
+    usleep(40);
     try{
         motor_feedback = ser->readline();
     } catch(serial::SerialException& e){
@@ -103,13 +103,13 @@ void DiffDriveNode::send_motor_cmd(serial::Serial* ser, const char* cmd){
         exit(-1);
     }
 
-    if(motor_feedback != "OK\r\n"){
-        ROS_ERROR_STREAM("Do not get \"OK\" response but get \"" + motor_feedback + "\" from the motor.");
+    if(motor_feedback.find("OK\r\n") == -1){
+        ROS_ERROR_STREAM("CMD: " + std::string(cmd) + ", do not get \"OK\" response but get \"" + motor_feedback + "\" from the motor.");
         emergency_stop();
         serial_mutex.unlock();
         exit(-1);
-
     }
+    usleep(10);
     serial_mutex.unlock();
     // Critical section end
 }
@@ -123,7 +123,7 @@ int DiffDriveNode::ask_motor_feedback(serial::Serial* ser, const char* cmd){
     serial_mutex.lock();
 
     ser->write(cmd_plus_end);
-    usleep(50);
+    usleep(40);
 
     // Note that there is a useless emergency_stop because the serial port error is showing it
     // cannot write/read serial port at that time. We cannot send any zero-velocity command to it.
@@ -136,7 +136,7 @@ int DiffDriveNode::ask_motor_feedback(serial::Serial* ser, const char* cmd){
         serial_mutex.unlock();
         exit(-1);
     }
-
+    usleep(10);
     serial_mutex.unlock();
     // Critical section end
 
@@ -146,8 +146,8 @@ int DiffDriveNode::ask_motor_feedback(serial::Serial* ser, const char* cmd){
 
 void DiffDriveNode::emergency_stop(void) {
     // serial_mutex.lock();
-    send_motor_cmd(serial_port_ptr_, "1V0");
-    send_motor_cmd(serial_port_ptr_, "2V0");
+    serial_port_ptr_->write("1V0\r\n");
+    serial_port_ptr_->write("2V0\r\n");
     // serial_mutex.unlock();
 }
 
@@ -254,6 +254,8 @@ void DiffDriveNode::motors_init(string serial_device, int baudrate, bool flag_mo
     }
 
     // Set Acceleration and deceleration maximum
+    ask_motor_feedback(serial_port_ptr_, "1GNODEADR");
+    ask_motor_feedback(serial_port_ptr_, "2GNODEADR");
     send_motor_cmd(serial_port_ptr_, "1AC5");
     send_motor_cmd(serial_port_ptr_, "1DEC10");
     send_motor_cmd(serial_port_ptr_, "2AC5");

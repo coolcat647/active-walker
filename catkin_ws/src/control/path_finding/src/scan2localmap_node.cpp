@@ -82,7 +82,6 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     pub_map_ = nh_.advertise<nav_msgs::OccupancyGrid>("local_map", 1);
     pub_footprint_ = nh_.advertise<geometry_msgs::PolygonStamped>("footprint", 1);
 
-
     // Prepare the transformation matrix from laser to base
     tflistener_ptr_ = new tf::TransformListener();
     ROS_INFO("Wait for TF from laserscan to %s in 10 seconds...", localmap_frameid_.c_str());
@@ -115,19 +114,23 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     footprint_ptr_ = geometry_msgs::PolygonStamped::Ptr(new geometry_msgs::PolygonStamped());
     footprint_ptr_->header.frame_id = localmap_frameid_;
     geometry_msgs::Point32 pt;
-    pt.x = -0.1, pt.y = 0.3314, pt.z = 0.0;
+    pt.x = -0.1, pt.y = 0.3314, pt.z = 0.0;         // end 1
     footprint_ptr_->polygon.points.push_back(pt);
     pt.x = 0.3, pt.y = 0.3314, pt.z = 0.0;
     footprint_ptr_->polygon.points.push_back(pt);
-    pt.x = 0.4414, pt.y = 0.19, pt.z = 0.0;
+    pt.x = 0.4414, pt.y = 0.19, pt.z = 0.0;         // front 1
     footprint_ptr_->polygon.points.push_back(pt);
-    pt.x = 0.4414, pt.y = -0.19, pt.z = 0.0;
+    pt.x = 0.5914, pt.y = 0.19, pt.z = 0.0;         // front 2
+    footprint_ptr_->polygon.points.push_back(pt);
+    pt.x = 0.5914, pt.y = -0.19, pt.z = 0.0;        // front 3
+    footprint_ptr_->polygon.points.push_back(pt);
+    pt.x = 0.4414, pt.y = -0.19, pt.z = 0.0;        // front 4
     footprint_ptr_->polygon.points.push_back(pt);
     pt.x = 0.3, pt.y = -0.3314, pt.z = 0.0;
     footprint_ptr_->polygon.points.push_back(pt);
-    pt.x = -0.1, pt.y = -0.3314, pt.z = 0.0;
+    pt.x = -0.1, pt.y = -0.3314, pt.z = 0.0;        // end 2
     footprint_ptr_->polygon.points.push_back(pt);
-    pt.x = -0.1, pt.y = -0.2014, pt.z = 0.0;
+    pt.x = -0.1, pt.y = -0.2014, pt.z = 0.0;        // end 3
     footprint_ptr_->polygon.points.push_back(pt);
     pt.x = 0.25, pt.y = -0.2014, pt.z = 0.0;
     footprint_ptr_->polygon.points.push_back(pt);
@@ -137,7 +140,7 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     footprint_ptr_->polygon.points.push_back(pt);
     pt.x = 0.25, pt.y = 0.2014, pt.z = 0.0;
     footprint_ptr_->polygon.points.push_back(pt);
-    pt.x = -0.1, pt.y = 0.2014, pt.z = 0.0;
+    pt.x = -0.1, pt.y = 0.2014, pt.z = 0.0;         // end 4
     footprint_ptr_->polygon.points.push_back(pt);
 
     // Cropbox filter init
@@ -280,8 +283,8 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
     pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_base2laser_);
 
     // Apply cropbox filter
-    box_filter_.setInputCloud(cloud_transformed);
-    box_filter_.filter(*cloud_transformed);
+    // box_filter_.setInputCloud(cloud_transformed);
+    // box_filter_.filter(*cloud_transformed);
 
     // Localmap init
     std::fill(localmap_ptr_->data.begin(), localmap_ptr_->data.end(), 0);
@@ -320,62 +323,6 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
 
     // Publish footprint
     footprint_ptr_->header.stamp = now;
-    pub_footprint_.publish(*footprint_ptr_);
-
-    // std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-    // std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
-}
-
-
-void Scan2LocalmapNode::scan_cb_deprecated(const sensor_msgs::LaserScan &laser_msg) {
-    // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-
-    std::fill(localmap_ptr_->data.begin(), localmap_ptr_->data.end(), 0);
-
-    double angle_min = laser_msg.angle_min;
-    double angle_max = laser_msg.angle_max;
-    double angle_increment = laser_msg.angle_increment;
-    double resolution = localmap_ptr_->info.resolution;
-    double map_origin_x = localmap_ptr_->info.origin.position.x;
-    double map_origin_y = localmap_ptr_->info.origin.position.y;
-    int map_width = localmap_ptr_->info.width;
-    int map_height = localmap_ptr_->info.height;
-    int map_limit = map_width * map_height;
-
-    // Local map
-    for(int i = 0; angle_min + angle_increment * i <= angle_max; ++i) {
-        double angle_laser = angle_min + angle_increment * i;
-        double laser_x = laser_msg.ranges[i] * cos(angle_laser);
-        double laser_y = laser_msg.ranges[i] * sin(angle_laser);
-
-        if (laser_msg.ranges[i] < laser_msg.range_min || laser_msg.ranges[i] > laser_msg.range_max)
-            continue;
-        else if(fabs(laser_x) > map_height * resolution / 2)
-            continue;
-        else if(fabs(laser_y) > map_width * resolution / 2)
-            continue;
-
-        // Add wall(non-walkable) space
-        int map_x = std::round((laser_x - map_origin_x) / resolution);
-        int map_y = std::round((laser_y - map_origin_y) / resolution);
-        int idx = map_y * map_width + map_x;
-        
-        if((0 < idx) && (idx < map_limit)){
-            if(localmap_ptr_->data[idx] == 100)
-                continue;
-            butterworth_filter(localmap_ptr_->data, map_width, map_height, idx, 100);
-        }
-    }
-
-    // Publish localmap
-    ros::Time now = ros::Time::now();
-    localmap_ptr_->header.stamp = now;
-    localmap_ptr_->header.frame_id = laser_msg.header.frame_id;
-    pub_map_.publish(*localmap_ptr_);
-
-    // Publish footprint
-    footprint_ptr_->header.stamp = now;
-    footprint_ptr_->header.frame_id = laser_msg.header.frame_id;
     pub_footprint_.publish(*footprint_ptr_);
 
     // std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
