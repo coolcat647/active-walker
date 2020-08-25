@@ -146,8 +146,8 @@ int DiffDriveNode::ask_motor_feedback(serial::Serial* ser, const char* cmd){
 
 void DiffDriveNode::emergency_stop(void) {
     // serial_mutex.lock();
-    serial_port_ptr_->write("1V0\r\n");
-    serial_port_ptr_->write("2V0\r\n");
+    send_motor_cmd(serial_port_ptr_, "1V0");
+    send_motor_cmd(serial_port_ptr_, "2V0");
     // serial_mutex.unlock();
 }
 
@@ -288,9 +288,11 @@ int main (int argc, char** argv) {
     ros::spin();
 
     // Safety concern
-    serial_mutex.lock();
-    node.serial_port_ptr_->write("1V0\r\n");
-    node.serial_port_ptr_->write("2V0\r\n");
-    serial_mutex.unlock();
+    // serial_mutex.lock();
+    node.send_motor_cmd(node.serial_port_ptr_, "1V0");
+    node.send_motor_cmd(node.serial_port_ptr_, "2V0");
+    // node.serial_port_ptr_->write("1V0\r\n");
+    // node.serial_port_ptr_->write("2V0\r\n");
+    // serial_mutex.unlock();
     return 0;
 }
