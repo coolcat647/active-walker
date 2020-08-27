@@ -27,16 +27,21 @@ $ pip3 install --user rospkg \
 ```
 
 ## Setup 
-a. Build the packages with **catkin_make** tool
+a. Build the packages with Python 3.6 compatible configuration
 ```bash
 $ cd active-walker/catkin_ws
 $ source compile_py36.sh
 ```
-b. Download detection model
+b. Sensor ports setup
+```bash
+$ cd active-walker    # In the project root directory
+$ source set_port.sh
+```
+c. Download detection model
 ```bash
 # In the "catkin_ws" directory
 $ source devel/setup.sh
-$ rosrun yolov4_pytorch download_weights.py
+$ rosrun yolov4_pytorch download_weights.py   # Size of pre-trained model: ~282MB
 ```
 
 ___
@@ -67,4 +72,7 @@ b. Servomotor: [FAULHABER 4490H048B](https://www.faulhaber.com/fileadmin/Import/
 
 c. Force sensor: [WACOH WEF-6A200-4-RCD](https://wacoh-tech.com/en/products/dynpick/200n_rcd.html)
 
-d. Laser range sensor: [HOKUYO URG-04LX-UG01](https://www.hokuyo-aut.jp/search/single.php?serial=166)
+<!-- d. Laser range sensor: [HOKUYO URG-04LX-UG01](https://www.hokuyo-aut.jp/search/single.php?serial=166) -->
+d. 2D LiDAR: [YDLIDAR G4](https://www.ydlidar.com/Public/upload/files/2020-04-13/YDLIDAR%20G4%20Datasheet.pdf)
+
+e. IMU sensor: [SparkFun 9DoF Razor IMU M0 (SEN-14001)](https://www.sparkfun.com/products/retired/14001)
