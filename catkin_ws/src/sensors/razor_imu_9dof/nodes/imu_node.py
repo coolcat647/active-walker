@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 # Copyright (c) 2012, Tang Tiong Yew
 # All rights reserved.
@@ -101,7 +102,7 @@ default_port='/dev/ttyUSB0'
 port = rospy.get_param('~port', default_port)
 
 #read calibration parameters
-port = rospy.get_param('~port', default_port)
+# port = rospy.get_param('~port', default_port)
 
 #accelerometer
 accel_x_min = rospy.get_param('~accel_x_min', -250.0)
@@ -147,12 +148,12 @@ pitch=0
 yaw=0
 seq=0
 accel_factor = 9.806 / 256.0    # sensor reports accel as 256.0 = 1G (9.8m/s^2). Convert to m/s^2.
-rospy.loginfo("Giving the razor IMU board 5 seconds to boot...")
-rospy.sleep(5) # Sleep for 5 seconds to wait for the board to boot
+rospy.loginfo("Giving the razor IMU board 3 seconds to boot...")
+rospy.sleep(3) # Sleep for 3 seconds to wait for the board to boot
 
 ### configure board ###
 #stop datastream
-ser.write('#o0' + chr(13))
+ser.write(str.encode('#o0' + chr(13)))
 
 #discard old input
 #automatic flush - NOT WORKING
@@ -161,53 +162,53 @@ ser.write('#o0' + chr(13))
 discard = ser.readlines() 
 
 #set output mode
-ser.write('#ox' + chr(13)) # To start display angle and sensor reading in text
+ser.write(str.encode('#ox' + chr(13))) # To start display angle and sensor reading in text
 
 rospy.loginfo("Writing calibration values to razor IMU board...")
 #set calibration values
-ser.write('#caxm' + str(accel_x_min) + chr(13))
-ser.write('#caxM' + str(accel_x_max) + chr(13))
-ser.write('#caym' + str(accel_y_min) + chr(13))
-ser.write('#cayM' + str(accel_y_max) + chr(13))
-ser.write('#cazm' + str(accel_z_min) + chr(13))
-ser.write('#cazM' + str(accel_z_max) + chr(13))
+ser.write(str.encode('#caxm' + str(accel_x_min) + chr(13)))
+ser.write(str.encode('#caxM' + str(accel_x_max) + chr(13)))
+ser.write(str.encode('#caym' + str(accel_y_min) + chr(13)))
+ser.write(str.encode('#cayM' + str(accel_y_max) + chr(13)))
+ser.write(str.encode('#cazm' + str(accel_z_min) + chr(13)))
+ser.write(str.encode('#cazM' + str(accel_z_max) + chr(13)))
 
 if (not calibration_magn_use_extended):
-    ser.write('#cmxm' + str(magn_x_min) + chr(13))
-    ser.write('#cmxM' + str(magn_x_max) + chr(13))
-    ser.write('#cmym' + str(magn_y_min) + chr(13))
-    ser.write('#cmyM' + str(magn_y_max) + chr(13))
-    ser.write('#cmzm' + str(magn_z_min) + chr(13))
-    ser.write('#cmzM' + str(magn_z_max) + chr(13))
+    ser.write(str.encode('#cmxm' + str(magn_x_min) + chr(13)))
+    ser.write(str.encode('#cmxM' + str(magn_x_max) + chr(13)))
+    ser.write(str.encode('#cmym' + str(magn_y_min) + chr(13)))
+    ser.write(str.encode('#cmyM' + str(magn_y_max) + chr(13)))
+    ser.write(str.encode('#cmzm' + str(magn_z_min) + chr(13)))
+    ser.write(str.encode('#cmzM' + str(magn_z_max) + chr(13)))
 else:
-    ser.write('#ccx' + str(magn_ellipsoid_center[0]) + chr(13))
-    ser.write('#ccy' + str(magn_ellipsoid_center[1]) + chr(13))
-    ser.write('#ccz' + str(magn_ellipsoid_center[2]) + chr(13))
-    ser.write('#ctxX' + str(magn_ellipsoid_transform[0][0]) + chr(13))
-    ser.write('#ctxY' + str(magn_ellipsoid_transform[0][1]) + chr(13))
-    ser.write('#ctxZ' + str(magn_ellipsoid_transform[0][2]) + chr(13))
-    ser.write('#ctyX' + str(magn_ellipsoid_transform[1][0]) + chr(13))
-    ser.write('#ctyY' + str(magn_ellipsoid_transform[1][1]) + chr(13))
-    ser.write('#ctyZ' + str(magn_ellipsoid_transform[1][2]) + chr(13))
-    ser.write('#ctzX' + str(magn_ellipsoid_transform[2][0]) + chr(13))
-    ser.write('#ctzY' + str(magn_ellipsoid_transform[2][1]) + chr(13))
-    ser.write('#ctzZ' + str(magn_ellipsoid_transform[2][2]) + chr(13))
+    ser.write(str.encode('#ccx' + str(magn_ellipsoid_center[0]) + chr(13)))
+    ser.write(str.encode('#ccy' + str(magn_ellipsoid_center[1]) + chr(13)))
+    ser.write(str.encode('#ccz' + str(magn_ellipsoid_center[2]) + chr(13)))
+    ser.write(str.encode('#ctxX' + str(magn_ellipsoid_transform[0][0]) + chr(13)))
+    ser.write(str.encode('#ctxY' + str(magn_ellipsoid_transform[0][1]) + chr(13)))
+    ser.write(str.encode('#ctxZ' + str(magn_ellipsoid_transform[0][2]) + chr(13)))
+    ser.write(str.encode('#ctyX' + str(magn_ellipsoid_transform[1][0]) + chr(13)))
+    ser.write(str.encode('#ctyY' + str(magn_ellipsoid_transform[1][1]) + chr(13)))
+    ser.write(str.encode('#ctyZ' + str(magn_ellipsoid_transform[1][2]) + chr(13)))
+    ser.write(str.encode('#ctzX' + str(magn_ellipsoid_transform[2][0]) + chr(13)))
+    ser.write(str.encode('#ctzY' + str(magn_ellipsoid_transform[2][1]) + chr(13)))
+    ser.write(str.encode('#ctzZ' + str(magn_ellipsoid_transform[2][2]) + chr(13)))
 
-ser.write('#cgx' + str(gyro_average_offset_x) + chr(13))
-ser.write('#cgy' + str(gyro_average_offset_y) + chr(13))
-ser.write('#cgz' + str(gyro_average_offset_z) + chr(13))
+ser.write(str.encode('#cgx' + str(gyro_average_offset_x) + chr(13)))
+ser.write(str.encode('#cgy' + str(gyro_average_offset_y) + chr(13)))
+ser.write(str.encode('#cgz' + str(gyro_average_offset_z) + chr(13)))
 
 #print calibration values for verification by user
 ser.flushInput()
-ser.write('#p' + chr(13))
+ser.write(str.encode('#p' + chr(13)))
 calib_data = ser.readlines()
 calib_data_print = "Printing set calibration values:\r\n"
 for line in calib_data:
-    calib_data_print += line
+    calib_data_print += str(line)
 rospy.loginfo(calib_data_print)
 
 #start datastream
-ser.write('#o1' + chr(13))
+ser.write(str.encode('#o1' + chr(13)))
 
 #automatic flush - NOT WORKING
 #ser.flushInput()  #discard old input, still in invalid format
@@ -220,9 +221,9 @@ rospy.loginfo("Publishing IMU data...")
 
 while not rospy.is_shutdown():
     line = ser.readline()
-    line = line.replace("#YPRAG=","")   # Delete "#YPRAG="
+    line = line.replace(str.encode("#YPRAG="), str.encode(""))   # Delete "#YPRAG="
     #f.write(line)                     # Write to the output log file
-    words = string.split(line,",")    # Fields split
+    words = line.split(str.encode(","))    # Fields split
     if len(words) > 2:
         #in AHRS firmware z axis points down, in ROS z axis points up (see REP 103)
         yaw_deg = -float(words[0])

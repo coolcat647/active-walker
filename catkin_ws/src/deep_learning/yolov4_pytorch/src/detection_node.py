@@ -183,7 +183,7 @@ class Yolov4Node(object):
     def image_cb(self, msg):
         try:
             cv_image = self.cvbridge.imgmsg_to_cv2(msg, "rgb8")
-            rospy.loginfo("Get image")
+            # rospy.loginfo("Get image")
         except CvBridgeError as e:
             print(e)
             return
