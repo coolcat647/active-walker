@@ -71,10 +71,11 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     // ROS parameters
     double inflation_radius;
     double map_resolution;
-    double localmap_range;
+    double localmap_range_x, localmap_range_y;
     ros::param::param<double>("~inflation_radius", inflation_radius, 0.2);
     ros::param::param<double>("~map_resolution", map_resolution, 0.1);
-    ros::param::param<double>("~localmap_range", localmap_range, 10.0);
+    ros::param::param<double>("~localmap_range_x", localmap_range_x, 10.0);     // map_width --> x axis
+    ros::param::param<double>("~localmap_range_y", localmap_range_y, 10.0);     // map_height --> y_axis
     ros::param::param<string>("~localmap_frameid", localmap_frameid_, "base_link");
 
     // ROS publishers & subscribers
@@ -99,16 +100,16 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     
     // Initialize localmap meta information
     localmap_ptr_ = nav_msgs::OccupancyGrid::Ptr(new nav_msgs::OccupancyGrid());
-    localmap_ptr_->info.width = localmap_range * 2 / map_resolution;
-    localmap_ptr_->info.height = localmap_range * 2 / map_resolution;
+    localmap_ptr_->info.width = localmap_range_x * 2 / map_resolution;      // map_width --> x axis
+    localmap_ptr_->info.height = localmap_range_y * 2 / map_resolution;     // map_height --> y_axis
     localmap_ptr_->info.resolution = map_resolution;
     localmap_ptr_->info.origin.position.x = -localmap_ptr_->info.resolution * localmap_ptr_->info.width / 2;
     localmap_ptr_->info.origin.position.y = -localmap_ptr_->info.resolution * localmap_ptr_->info.height / 2;
     localmap_ptr_->info.origin.orientation.w = 1.0;
     localmap_ptr_->data.resize(localmap_ptr_->info.width * localmap_ptr_->info.height);
     localmap_ptr_->header.frame_id = localmap_frameid_;
-    ROS_INFO("Default range of localmap:+-%.1f m, size:%dx%d", 
-                localmap_range, localmap_ptr_->info.width, localmap_ptr_->info.height);
+    ROS_INFO("Default range of localmap:+-%.1fx%.1f m, size:%dx%d", 
+                localmap_range_x, localmap_range_y, localmap_ptr_->info.width, localmap_ptr_->info.height);
     
     // Footprint generator
     footprint_ptr_ = geometry_msgs::PolygonStamped::Ptr(new geometry_msgs::PolygonStamped());
@@ -144,8 +145,8 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     footprint_ptr_->polygon.points.push_back(pt);
 
     // Cropbox filter init
-    box_filter_.setMax(Eigen::Vector4f(0.5 + inflation_radius, 0.35 + inflation_radius, 5.0, 1.0));
-    box_filter_.setMin(Eigen::Vector4f(-0.5 - inflation_radius, -0.35 - inflation_radius, -5.0, 1.0));
+    box_filter_.setMax(Eigen::Vector4f(0.1, 0.30, 5.0, 1.0));
+    box_filter_.setMin(Eigen::Vector4f(-1.0, -0.30, -5.0, 1.0));
     box_filter_.setKeepOrganized(false);
     box_filter_.setNegative(true);
 
@@ -283,8 +284,8 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
     pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_base2laser_);
 
     // Apply cropbox filter
-    // box_filter_.setInputCloud(cloud_transformed);
-    // box_filter_.filter(*cloud_transformed);
+    box_filter_.setInputCloud(cloud_transformed);
+    box_filter_.filter(*cloud_transformed);
 
     // Localmap init
     std::fill(localmap_ptr_->data.begin(), localmap_ptr_->data.end(), 0);
@@ -299,9 +300,9 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
     for(int i = 0; i < cloud_transformed->points.size(); i++) {
         double laser_x = cloud_transformed->points[i].x;
         double laser_y = cloud_transformed->points[i].y;
-        if(fabs(laser_x) > map_height * resolution / 2)
+        if(fabs(laser_x) > map_width * resolution / 2)
             continue;
-        else if(fabs(laser_y) > map_width * resolution / 2)
+        else if(fabs(laser_y) > map_height * resolution / 2)
             continue;
 
         // Add wall(non-walkable) space

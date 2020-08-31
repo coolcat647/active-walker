@@ -170,6 +170,9 @@ target_link_libraries(fake_map_node ${PROJECT_NAME} ${catkin_LIBRARIES})
 add_executable(scan2localmap_node src/scan2localmap_node.cpp)
 target_link_libraries(scan2localmap_node ${catkin_LIBRARIES})
 
+add_executable(scan2comfortmap_node src/scan2comfortmap_node.cpp)
+target_link_libraries(scan2comfortmap_node ${catkin_LIBRARIES})
+
 add_executable(path_finding_node src/path_finding_node.cpp)
 target_link_libraries(path_finding_node ${PROJECT_NAME} ${catkin_LIBRARIES})
 

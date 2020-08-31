@@ -229,7 +229,7 @@ geometry_msgs::Point AstarPathfindingNode::generate_sub_goal(const nav_msgs::Occ
             int map_x = std::round((tmp_dis * std::sin(theta_from_yaxis) - map_origin_x + path_start_offsetx_) / map_resolution);
             int map_y = std::round((tmp_dis * std::cos(theta_from_yaxis) - map_origin_y + path_start_offsety_) / map_resolution);
             int idx = map_y * map_width + map_x;
-            if(get_cost((map_msg_ptr->data), map_width, map_height, idx) >= 50 || idx >= map_width * map_height) {
+            if(get_cost((map_msg_ptr->data), map_width, map_height, idx) >= 80 || idx >= map_width * map_height || map_msg_ptr->data[idx] == -1) {
                 tmp_dis -= distance_resolution * 3;
                 break;
             }

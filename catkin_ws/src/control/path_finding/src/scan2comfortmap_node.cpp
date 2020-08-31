@@ -23,6 +23,7 @@
 #include <pcl/common/common.h>
 #include <pcl_conversions/pcl_conversions.h> // ros2pcl
 #include <pcl/filters/crop_box.h>
+#include <pcl/filters/voxel_grid.h>
 
 using namespace std;
 
@@ -61,6 +62,7 @@ public:
 
     // PCL Cropbox filter
     pcl::CropBox<pcl::PointXYZ> box_filter_; 
+    pcl::VoxelGrid<pcl::PointXYZ> vg_filter_;
 };
 
 
@@ -71,12 +73,13 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     // ROS parameters
     double inflation_radius;
     double map_resolution;
-    double localmap_range;
+    double localmap_range_x, localmap_range_y;
     ros::param::param<double>("~inflation_radius", inflation_radius, 0.2);
     ros::param::param<double>("~map_resolution", map_resolution, 0.1);
-    ros::param::param<double>("~localmap_range", localmap_range, 10.0);
+    ros::param::param<double>("~localmap_range_x", localmap_range_x, 10.0);     // map_width --> x axis
+    ros::param::param<double>("~localmap_range_y", localmap_range_y, 5.0);     // map_height --> y_axis
     ros::param::param<string>("~localmap_frameid", localmap_frameid_, "base_link");
-
+    
     // ROS publishers & subscribers
     sub_scan_ = nh_.subscribe("scan", 1, &Scan2LocalmapNode::scan_cb, this);
     pub_map_ = nh_.advertise<nav_msgs::OccupancyGrid>("local_map", 1);
@@ -99,16 +102,16 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     
     // Initialize localmap meta information
     localmap_ptr_ = nav_msgs::OccupancyGrid::Ptr(new nav_msgs::OccupancyGrid());
-    localmap_ptr_->info.width = localmap_range * 2 / map_resolution;
-    localmap_ptr_->info.height = localmap_range * 2 / map_resolution;
+    localmap_ptr_->info.width = localmap_range_x * 2 / map_resolution;      // map_width --> x axis
+    localmap_ptr_->info.height = localmap_range_y * 2 / map_resolution;     // map_height --> y_axis
     localmap_ptr_->info.resolution = map_resolution;
     localmap_ptr_->info.origin.position.x = -localmap_ptr_->info.resolution * localmap_ptr_->info.width / 2;
     localmap_ptr_->info.origin.position.y = -localmap_ptr_->info.resolution * localmap_ptr_->info.height / 2;
     localmap_ptr_->info.origin.orientation.w = 1.0;
     localmap_ptr_->data.resize(localmap_ptr_->info.width * localmap_ptr_->info.height);
     localmap_ptr_->header.frame_id = localmap_frameid_;
-    ROS_INFO("Default range of localmap:+-%.1f m, size:%dx%d", 
-                localmap_range, localmap_ptr_->info.width, localmap_ptr_->info.height);
+    ROS_INFO("Default range of localmap:+-%.1fx%.1f m, size:%dx%d", 
+                localmap_range_x, localmap_range_y, localmap_ptr_->info.width, localmap_ptr_->info.height);
     
     // Footprint generator
     footprint_ptr_ = geometry_msgs::PolygonStamped::Ptr(new geometry_msgs::PolygonStamped());
@@ -144,13 +147,17 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     footprint_ptr_->polygon.points.push_back(pt);
 
     // Cropbox filter init
-    box_filter_.setMax(Eigen::Vector4f(0.5 + inflation_radius, 0.35 + inflation_radius, 5.0, 1.0));
-    box_filter_.setMin(Eigen::Vector4f(-0.5 - inflation_radius, -0.35 - inflation_radius, -5.0, 1.0));
+    box_filter_.setMax(Eigen::Vector4f(0.1, 0.30, 5.0, 1.0));
+    box_filter_.setMin(Eigen::Vector4f(-1.0, -0.30, -5.0, 1.0));
     box_filter_.setKeepOrganized(false);
     box_filter_.setNegative(true);
 
+    // VoxelGrid filter init
+    double voxel_grid_size = 0.2;
+    vg_filter_.setLeafSize(voxel_grid_size, voxel_grid_size, voxel_grid_size);
+
     // Filter kernel generator
-    butterworth_filter_generate(inflation_radius, 6, map_resolution, 100);
+    // butterworth_filter_generate(inflation_radius, 6, map_resolution, 100);  
 }
 
 
@@ -286,8 +293,12 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
     // box_filter_.setInputCloud(cloud_transformed);
     // box_filter_.filter(*cloud_transformed);
 
+    // Apply voxel grid filter
+    vg_filter_.setInputCloud(cloud_transformed);
+    vg_filter_.filter(*cloud_transformed);
+
     // Localmap init
-    std::fill(localmap_ptr_->data.begin(), localmap_ptr_->data.end(), 0);
+    std::fill(localmap_ptr_->data.begin(), localmap_ptr_->data.end(), -1);
 
     double resolution = localmap_ptr_->info.resolution;
     double map_origin_x = localmap_ptr_->info.origin.position.x;
@@ -296,24 +307,28 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
     int map_height = localmap_ptr_->info.height;
     int map_limit = map_width * map_height;
 
-    for(int i = 0; i < cloud_transformed->points.size(); i++) {
-        double laser_x = cloud_transformed->points[i].x;
-        double laser_y = cloud_transformed->points[i].y;
-        if(fabs(laser_x) > map_height * resolution / 2)
-            continue;
-        else if(fabs(laser_y) > map_width * resolution / 2)
-            continue;
+    for(int i = 0; i < localmap_ptr_->data.size(); i++) {
+        double grid_real_x = (i % map_width) * resolution + map_origin_x;
+        double grid_real_y = (i / map_width) * resolution + map_origin_y;
+        // printf("real xy (%.2f, %.2f)\n", grid_real_x, grid_real_y);
+        double grid_real_anlge = std::atan2(grid_real_y, grid_real_x);
+        double grid_real_distance = std::hypot(grid_real_x, grid_real_y);
 
-        // Add wall(non-walkable) space
-        int map_x = std::round((laser_x - map_origin_x) / resolution);
-        int map_y = std::round((laser_y - map_origin_y) / resolution);
-        int idx = map_y * map_width + map_x;
-        
-        if((0 < idx) && (idx < map_limit)){
-            if(localmap_ptr_->data[idx] == 100)
-                continue;
-            butterworth_filter(localmap_ptr_->data, map_width, map_height, idx, 100);
+        bool is_behind_obstacle = false;
+        std::vector<double> distance_list;
+        for(int j = 0; j < cloud_transformed->points.size(); j++){
+            double obstacle_angle = std::atan2(cloud_transformed->points[j].y, cloud_transformed->points[j].x);
+            double obstacle_distance = std::hypot(cloud_transformed->points[j].x, cloud_transformed->points[j].y);
+            if(std::abs(obstacle_angle - grid_real_anlge) <= (M_PI / 18) && obstacle_distance < grid_real_distance) {
+                is_behind_obstacle = true;
+                break;
+            }
+            distance_list.push_back(std::hypot(cloud_transformed->points[j].x - grid_real_x, cloud_transformed->points[j].y - grid_real_y));
         }
+        if(is_behind_obstacle) continue;
+        double closest_distance = *min_element(distance_list.begin(), distance_list.end());
+        localmap_ptr_->data[i] = (closest_distance <= 1.2)? 70 - (int)(50.0 / (1 + std::exp(-2.0 * closest_distance)) - 25.0): 
+                                                            70 - (int)(105.0 / (1 + std::exp(-0.5 * (closest_distance + 0.4))) - 51.5);
     }
 
     // Publish localmap
