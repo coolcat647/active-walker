@@ -142,24 +142,24 @@ class MultiObjectTrackingNode(object):
             marker_array.markers.append(marker)
 
             # Show tracking ID
-            str_marker = Marker()
-            str_marker.header.frame_id = msg.header.frame_id
-            str_marker.header.stamp = rospy.Time.now()
-            str_marker.ns = 'text'
-            str_marker.id = idx
-            str_marker.scale.z = 0.4 #The size of the text
-            str_marker.color.b = 1.0
-            str_marker.color.g = 1.0
-            str_marker.color.r = 1.0
-            str_marker.color.a = 1.0
-            str_marker.pose.position.x = d[0]
-            str_marker.pose.position.y = d[1]
-            str_marker.pose.position.z = 0.0
-            str_marker.lifetime = rospy.Duration(MARKER_LIFETIME)
-            str_marker.type = Marker.TEXT_VIEW_FACING
-            str_marker.action = Marker.ADD
-            str_marker.text = str(d[5])
-            marker_array.markers.append(str_marker)
+            # str_marker = Marker()
+            # str_marker.header.frame_id = msg.header.frame_id
+            # str_marker.header.stamp = rospy.Time.now()
+            # str_marker.ns = 'text'
+            # str_marker.id = idx
+            # str_marker.scale.z = 0.4 #The size of the text
+            # str_marker.color.b = 1.0
+            # str_marker.color.g = 1.0
+            # str_marker.color.r = 1.0
+            # str_marker.color.a = 1.0
+            # str_marker.pose.position.x = d[0]
+            # str_marker.pose.position.y = d[1]
+            # str_marker.pose.position.z = 0.0
+            # str_marker.lifetime = rospy.Duration(MARKER_LIFETIME)
+            # str_marker.type = Marker.TEXT_VIEW_FACING
+            # str_marker.action = Marker.ADD
+            # str_marker.text = str(d[5])
+            # marker_array.markers.append(str_marker)
             
             # Show direction 
             arrow_marker = copy.deepcopy(marker)

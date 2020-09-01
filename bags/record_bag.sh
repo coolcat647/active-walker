@@ -4,4 +4,5 @@ rosbag record --duration 60 -o ee6 \
             /tf \
             /usb_cam/image_raw \
             /usb_cam/camera_info \
-            /odom
+            /odom \
+            /wheel_odom

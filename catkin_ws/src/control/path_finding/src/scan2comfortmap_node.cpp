@@ -77,7 +77,7 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     ros::param::param<double>("~inflation_radius", inflation_radius, 0.2);
     ros::param::param<double>("~map_resolution", map_resolution, 0.1);
     ros::param::param<double>("~localmap_range_x", localmap_range_x, 10.0);     // map_width --> x axis
-    ros::param::param<double>("~localmap_range_y", localmap_range_y, 5.0);     // map_height --> y_axis
+    ros::param::param<double>("~localmap_range_y", localmap_range_y, 10.0);     // map_height --> y_axis
     ros::param::param<string>("~localmap_frameid", localmap_frameid_, "base_link");
     
     // ROS publishers & subscribers
@@ -319,7 +319,7 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
         for(int j = 0; j < cloud_transformed->points.size(); j++){
             double obstacle_angle = std::atan2(cloud_transformed->points[j].y, cloud_transformed->points[j].x);
             double obstacle_distance = std::hypot(cloud_transformed->points[j].x, cloud_transformed->points[j].y);
-            if(std::abs(obstacle_angle - grid_real_anlge) <= (M_PI / 18) && obstacle_distance < grid_real_distance) {
+            if(std::abs(obstacle_angle - grid_real_anlge) < (M_PI / 36) && obstacle_distance < grid_real_distance) {
                 is_behind_obstacle = true;
                 break;
             }
@@ -327,8 +327,8 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
         }
         if(is_behind_obstacle) continue;
         double closest_distance = *min_element(distance_list.begin(), distance_list.end());
-        localmap_ptr_->data[i] = (closest_distance <= 1.2)? 70 - (int)(50.0 / (1 + std::exp(-2.0 * closest_distance)) - 25.0): 
-                                                            70 - (int)(105.0 / (1 + std::exp(-0.5 * (closest_distance + 0.4))) - 51.5);
+        localmap_ptr_->data[i] = (closest_distance <= 1.2)? 80 - (50.0 / (1 + std::exp(-2.0 * closest_distance)) - 25.0) / 55 * 85: 
+                                                            80 - (105.0 / (1 + std::exp(-0.5 * (closest_distance + 0.4))) - 51.5) / 55 * 85;
     }
 
     // Publish localmap

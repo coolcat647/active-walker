@@ -83,7 +83,7 @@ class StanleyControlNode(object):
             path_x_raw.append(msg.poses[i].pose.position.x)
             path_y_raw.append(msg.poses[i].pose.position.y)
         cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(
-        path_x_raw, path_y_raw, ds=0.1)
+        path_x_raw, path_y_raw, ds=0.4)
 
         ### Critical section start ###
         self.path_update_mutex.acquire()

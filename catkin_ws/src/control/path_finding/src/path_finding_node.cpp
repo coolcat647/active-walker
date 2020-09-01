@@ -46,6 +46,7 @@ public:
     geometry_msgs::Point generate_sub_goal(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, tf::StampedTransform tf_base2odom);
     bool is_footprint_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, geometry_msgs::PolygonStamped::ConstPtr &footprint_ptr);
     bool is_path_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, nav_msgs::Path::Ptr path_ptr, tf::StampedTransform tf_base2odom);
+    bool is_robot_following_path(nav_msgs::Path::Ptr path_ptr, double tracking_progress_percentage, tf::StampedTransform tf_base2odom);
 
     void timer_cb(const ros::TimerEvent&);
 
@@ -65,14 +66,17 @@ public:
     // TF related
     tf::TransformListener tflistener_;
 
+    // Sub-goal related
     visualization_msgs::Marker mkr_subgoal_candidate_;
     visualization_msgs::Marker mrk_subgoal_;
     double subgoal_timer_interval_;
     double solver_timeout_ms_; 
     bool flag_planning_busy_;
     
+    // Feedback of path tracking module 
     double tracking_progress_percentage_ = 0;      // to check the progress of tracking module
 
+    // A* clever trick
     double path_start_offsetx_;
     double path_start_offsety_;
 };
@@ -123,7 +127,7 @@ AstarPathfindingNode::AstarPathfindingNode(ros::NodeHandle nh, ros::NodeHandle p
     mrk_subgoal_.lifetime = ros::Duration(2.0);
     mrk_subgoal_.id = 0;
 
-    // Timer related
+    // Timer init
     flag_planning_busy_ = false;
     timer_ = nh_.createTimer(ros::Duration(subgoal_timer_interval_), &AstarPathfindingNode::timer_cb, this);
 
@@ -156,11 +160,31 @@ bool AstarPathfindingNode::is_footprint_safe(const nav_msgs::OccupancyGrid::Cons
         int map_x = std::round(footprint_ptr->polygon.points[i].x - map_origin_x) / map_resolution;
         int map_y = std::round(footprint_ptr->polygon.points[i].y - map_origin_y) / map_resolution;
         int idx = map_y * map_msg_ptr->info.width + map_x;
-        if(map_msg_ptr->data[idx] >= 80) {
+        if(map_msg_ptr->data[idx] >= 80 || map_msg_ptr->data[idx] < 0) {
             return false;
         }
     }
     return true;
+}
+
+bool AstarPathfindingNode::is_robot_following_path(nav_msgs::Path::Ptr path_ptr, double tracking_progress_percentage, tf::StampedTransform tf_base2odom) {
+    if(!path_ptr || path_ptr->poses.size() < 1)
+        return false;
+
+    tf::Vector3 robot_position = tf_base2odom.getOrigin();
+    int target_idx = path_ptr->poses.size() * (0.99 - tracking_progress_percentage);
+    // ROS_ERROR("path lenght: %d, target_idx: %d", path_ptr->poses.size(), target_idx);
+    geometry_msgs::PoseStamped tracking_point = path_ptr->poses[target_idx];
+    // ROS_ERROR("tracking idx=%d\ttracking point=%.2f, %.2f\trobot position=%.2f,%.2f", \
+    //             target_idx, \
+    //             tracking_point.pose.position.x, \
+    //             tracking_point.pose.position.y, \
+    //             robot_position.getX(), \
+    //             robot_position.getY());
+    if(std::hypot(tracking_point.pose.position.x - robot_position.getX(), tracking_point.pose.position.y - robot_position.getY()) > 2.0)
+        return false;
+    else
+        return true;
 }
 
 
@@ -190,7 +214,7 @@ bool AstarPathfindingNode::is_path_safe(const nav_msgs::OccupancyGrid::ConstPtr 
         int map_x = std::round((vec_transformed.getX() - map_origin_x) / map_resolution);
         int map_y = std::round((vec_transformed.getY() - map_origin_y) / map_resolution);
         int idx = map_y * map_width + map_x;
-        if(map_msg_ptr->data[idx] >= 80) {
+        if(map_msg_ptr->data[idx] >= 80 || map_msg_ptr->data[idx] < 0) {
             return false;
         }
     }
@@ -229,7 +253,7 @@ geometry_msgs::Point AstarPathfindingNode::generate_sub_goal(const nav_msgs::Occ
             int map_x = std::round((tmp_dis * std::sin(theta_from_yaxis) - map_origin_x + path_start_offsetx_) / map_resolution);
             int map_y = std::round((tmp_dis * std::cos(theta_from_yaxis) - map_origin_y + path_start_offsety_) / map_resolution);
             int idx = map_y * map_width + map_x;
-            if(get_cost((map_msg_ptr->data), map_width, map_height, idx) >= 80 || idx >= map_width * map_height || map_msg_ptr->data[idx] == -1) {
+            if(get_cost((map_msg_ptr->data), map_width, map_height, idx) > 50 || idx >= map_width * map_height || map_msg_ptr->data[idx] == -1) {
                 tmp_dis -= distance_resolution * 3;
                 break;
             }
@@ -286,7 +310,7 @@ int AstarPathfindingNode::get_cost(vector<int8_t> vec, int map_width, int map_he
                 cost += vec[op_idx];
         }
     }
-    return cost;
+    return cost / (kernel_size * kernel_size);
 }
 
 
@@ -327,7 +351,9 @@ void AstarPathfindingNode::timer_cb(const ros::TimerEvent&){
             flag_planning_busy_ = false;
             return;
         }
-        else if((1.0 - tracking_progress_percentage_) > 1e-3 && is_path_safe(localmap_ptr_, walkable_path_ptr_, tf_base2odom)){
+        else if((1.0 - tracking_progress_percentage_) > 1e-3 && \
+                is_path_safe(localmap_ptr_, walkable_path_ptr_, tf_base2odom) && \
+                is_robot_following_path(walkable_path_ptr_, tracking_progress_percentage_, tf_base2odom)){
             // no need plan, just publish old path
             walkable_path_ptr_->header.stamp = ros::Time();
             pub_walkable_path_.publish(walkable_path_ptr_);
@@ -338,15 +364,15 @@ void AstarPathfindingNode::timer_cb(const ros::TimerEvent&){
             if((1.0 - tracking_progress_percentage_) < 1e-3){
                 // Arrival situation
                 subgoal_pt = generate_sub_goal(localmap_ptr_, tf_base2odom);
-                // ROS_WARN("Almost arrivied, generate new goal: (%.2f, %.2f)", subgoal_pt.x, subgoal_pt.y);
+                ROS_WARN("Almost arrivied, generate new goal: (%.2f, %.2f)", subgoal_pt.x, subgoal_pt.y);
             }else if(walkable_path_ptr_){
                 // Unsafe path situation
                 subgoal_pt = generate_sub_goal(localmap_ptr_, tf_base2odom);
-                // ROS_WARN("Old path is not safe, generate new goal: (%.2f, %.2f)", subgoal_pt.x, subgoal_pt.y);
+                ROS_WARN("Old path is not safe, generate new goal: (%.2f, %.2f)", subgoal_pt.x, subgoal_pt.y);
             }else{
                 // New plan situation
                 subgoal_pt = generate_sub_goal(localmap_ptr_, tf_base2odom);
-                // ROS_WARN("No any old path, start plan...");
+                ROS_WARN("No any old path,    start plan...");
             }
 
             if(std::hypot(subgoal_pt.x - path_start_offsetx_, subgoal_pt.y - path_start_offsety_) < 0.2){
