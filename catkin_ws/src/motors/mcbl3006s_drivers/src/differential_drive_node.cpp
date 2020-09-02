@@ -40,7 +40,10 @@ DiffDriveNode::DiffDriveNode(){
     sub_cmd_ = nh_.subscribe("/cmd_vel", 1, &DiffDriveNode::cmd_cb, this);
     srv_rst_odom_ = nh_.advertiseService("reset_odom", 
                                                    &DiffDriveNode::rst_odom_cb,
-                                                   this);   
+                                                   this);
+    srv_motor_disable_ = nh_.advertiseService("motor_disable", 
+                                                   &DiffDriveNode::motor_disable_cb,
+                                                   this);
     int baudrate;
     bool flag_motor_disable = false;
     string serial_device;
@@ -81,6 +84,28 @@ bool DiffDriveNode::rst_odom_cb(std_srvs::TriggerRequest& req, std_srvs::Trigger
     string message = "Reset wheel odometry.";
     cout << COLOR_GREEN << message << COLOR_NC << endl;
     resp.success = true; // boring, but valid response info
+    resp.message = message;
+    return true;
+}
+
+
+bool DiffDriveNode::motor_disable_cb(std_srvs::SetBoolRequest& req, std_srvs::SetBoolResponse& resp){
+    string message;
+    if(req.data == true){
+        send_motor_cmd(serial_port_ptr_, "1V0");
+        send_motor_cmd(serial_port_ptr_, "2V0");
+        send_motor_cmd(serial_port_ptr_, "1DI");
+        send_motor_cmd(serial_port_ptr_, "2DI");
+        message = "Motor disable";
+    }else{
+        // send_motor_cmd(serial_port_ptr_, "1V0");
+        // send_motor_cmd(serial_port_ptr_, "2V0");
+        send_motor_cmd(serial_port_ptr_, "1EN");
+        send_motor_cmd(serial_port_ptr_, "2EN");
+        message = "Motor enable";
+    }
+
+    resp.success = true;
     resp.message = message;
     return true;
 }

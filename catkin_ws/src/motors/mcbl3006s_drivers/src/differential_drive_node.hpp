@@ -15,6 +15,7 @@
 #include <geometry_msgs/TransformStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <std_srvs/Trigger.h>
+#include <std_srvs/SetBool.h>
 
 using namespace std;
 
@@ -42,13 +43,15 @@ private:
     void cmd_cb(const geometry_msgs::Twist& msg);
     // ROS service callback
     bool rst_odom_cb(std_srvs::TriggerRequest& req, std_srvs::TriggerResponse& resp);
+    bool motor_disable_cb(std_srvs::SetBoolRequest& req, std_srvs::SetBoolResponse& resp);
 
     // ROS related
     ros::NodeHandle nh_;                            // Private ros node handler
     ros::Timer timer_;
     ros::Publisher pub_odom_;  
     ros::Subscriber sub_cmd_;
-    ros::ServiceServer srv_rst_odom_;                     
+    ros::ServiceServer srv_rst_odom_;
+    ros::ServiceServer srv_motor_disable_;                     
     geometry_msgs::Twist cmd_msg_;                  // velocity msg;
     tf::TransformBroadcaster  odom_broadcaster_;
 
