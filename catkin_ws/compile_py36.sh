@@ -1,4 +1,4 @@
-catkin_make --cmake-args \
+catkin_make -j3 --cmake-args \
     -DCMAKE_BUILD_TYPE=Release \
     -DPYTHON_EXECUTABLE=/usr/bin/python3 \
     -DPYTHON_INCLUDE_DIR=/usr/include/python3.6m \
