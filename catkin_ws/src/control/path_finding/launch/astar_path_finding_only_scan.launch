@@ -3,6 +3,7 @@
     <arg name="inflation_radius" default="0.4" />
     <arg name="map_resolution" default="0.1" />
     <arg name="localmap_frameid" default="base_link" />
+    <arg name="use_agf" default="false" />
 
     <arg name="solver_timeout_ms" default="100.0" />
     <arg name="subgoal_timer_interval" default="0.5" />
@@ -12,6 +13,7 @@
         <param name="inflation_radius" type="double" value="$(arg inflation_radius)" />
         <param name="map_resolution" type="double" value="$(arg map_resolution)" />
         <param name="localmap_frameid" type="str" value="$(arg localmap_frameid)" />
+        <param name="use_agf" type="bool" value="$(arg use_agf)" />
     </node> 
 
     <!-- A* path finding node -->

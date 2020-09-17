@@ -34,6 +34,10 @@ namespace Astar {
         int g_val;
         int h_val;
         Node *parent;
+
+        // Decision recording
+        int8_t decision;
+
         // c++ define a function-like method to initialize struct data
         Node(Grid2D grid_, Node *parent_ = nullptr);
         friend ostream& operator<<(ostream& out, const Node& node);

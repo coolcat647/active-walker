@@ -12,6 +12,8 @@
 #include <laser_geometry/laser_geometry.h>
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <walker_msgs/Trk3DArray.h>
+#include <walker_msgs/Trk3D.h>
 
 // TF
 #include <tf/transform_listener.h>
@@ -37,10 +39,9 @@ class Scan2LocalmapNode {
 public:
     Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh);
     static void sigint_cb(int sig);
-    void butterworth_filter(vector<int8_t> &vec, int map_width, int map_height, int target_idx, int peak_value);
     void asymmetric_gaussian_filter(vector<int8_t> &vec, double map_resolution, int map_width, int map_height, int target_idx, double target_yaw, double target_speed, int peak_value);
-    void butterworth_filter_generate(double filter_radius, int filter_order, double map_resolution, int peak_value);
     void scan_cb(const sensor_msgs::LaserScan &laser_msg);
+    void trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_ptr);
     void scan_cb_deprecated(const sensor_msgs::LaserScan &laser_msg);
 
     // ROS related
@@ -63,6 +64,9 @@ public:
     // PCL Cropbox filter
     pcl::CropBox<pcl::PointXYZ> box_filter_; 
     pcl::VoxelGrid<pcl::PointXYZ> vg_filter_;
+
+    // Flag AGF use or not
+    bool flag_agf_using_;
 };
 
 
@@ -79,15 +83,20 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     ros::param::param<double>("~localmap_range_x", localmap_range_x, 10.0);     // map_width --> x axis
     ros::param::param<double>("~localmap_range_y", localmap_range_y, 10.0);     // map_height --> y_axis
     ros::param::param<string>("~localmap_frameid", localmap_frameid_, "base_link");
+    ros::param::param<bool>("~use_agf", flag_agf_using_, false);
     
     // ROS publishers & subscribers
-    sub_scan_ = nh_.subscribe("scan", 1, &Scan2LocalmapNode::scan_cb, this);
+    if(flag_agf_using_)
+        sub_scan_ = nh_.subscribe("trk3d_result", 1, &Scan2LocalmapNode::trk3d_cb, this);
+    else
+        sub_scan_ = nh_.subscribe("scan", 1, &Scan2LocalmapNode::scan_cb, this);
+
     pub_map_ = nh_.advertise<nav_msgs::OccupancyGrid>("local_map", 1);
     pub_footprint_ = nh_.advertise<geometry_msgs::PolygonStamped>("footprint", 1);
 
     // Prepare the transformation matrix from laser to base
     tflistener_ptr_ = new tf::TransformListener();
-    ROS_INFO("Wait for TF from laserscan to %s in 10 seconds...", localmap_frameid_.c_str());
+    ROS_INFO("Wait for TF from laser_link to %s in 10 seconds...", localmap_frameid_.c_str());
     try{
         tflistener_ptr_->waitForTransform(localmap_frameid_, "laser_link",
                                     ros::Time(), ros::Duration(10.0));
@@ -147,31 +156,30 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     footprint_ptr_->polygon.points.push_back(pt);
 
     // Cropbox filter init
-    box_filter_.setMax(Eigen::Vector4f(0.1, 0.30, 5.0, 1.0));
-    box_filter_.setMin(Eigen::Vector4f(-1.0, -0.30, -5.0, 1.0));
+    box_filter_.setMax(Eigen::Vector4f(0.4, 0.50, 5.0, 1.0));
+    box_filter_.setMin(Eigen::Vector4f(-1.5, -0.50, -5.0, 1.0));
     box_filter_.setKeepOrganized(false);
     box_filter_.setNegative(true);
 
     // VoxelGrid filter init
     double voxel_grid_size = 0.2;
-    vg_filter_.setLeafSize(voxel_grid_size, voxel_grid_size, voxel_grid_size);
-
-    // Filter kernel generator
-    // butterworth_filter_generate(inflation_radius, 6, map_resolution, 100);  
+    vg_filter_.setLeafSize(voxel_grid_size, voxel_grid_size, voxel_grid_size);  
 }
 
 
 void Scan2LocalmapNode::asymmetric_gaussian_filter(vector<int8_t> &vec, double map_resolution, int map_width, int map_height, int target_idx, double target_yaw, double target_speed, int peak_value) {
-    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+    // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
     // Asymmetric Gaussian Filter kernel
     vector<vector<int8_t> > agf_kernel;
-    double kernel_range = 2.0 * 2;
-    for(double y = -kernel_range / 2 ; y <= kernel_range / 2 * 1.00000001; y += map_resolution){
+    // double kernel_range = 2.4 * 2;
+    double kernel_range = 5.0 * 2;
+    double max_kernel_range = kernel_range / 2 * 1.0000001;
+    for(double y = -kernel_range / 2 ; y <= max_kernel_range; y += map_resolution){
         vector<int8_t> tmp_row;
-        for(double x = -kernel_range / 2; x <= kernel_range / 2 * 1.00000001; x += map_resolution){
-            double sigma_head = std::max(target_speed * 2, 0.5);
-            double sigma_side = sigma_head * 2 / 3;
+        for(double x = -kernel_range / 2; x <= max_kernel_range; x += map_resolution){
+            double sigma_head = std::max(target_speed, 0.5);
+            double sigma_side = sigma_head * 2 / 5;
             double sigma_rear = sigma_head / 2;
 
             double alpha = std::atan2(-y, -x) - target_yaw - M_PI * 0.5;
@@ -182,17 +190,15 @@ void Scan2LocalmapNode::asymmetric_gaussian_filter(vector<int8_t> &vec, double m
             double sigma_side_p2 = std::pow(sigma_side, 2);
             double sigma_front_p2 = std::pow(sigma_front, 2);
             double g_a = cos_p2 / (2 * sigma_front_p2) + sin_p2 / (2 * sigma_side_p2);
-            double g_b = std::pow(std::sin(2 * target_yaw), 2) / (4 * sigma_front_p2) - std::pow(std::sin(2 * target_yaw), 2) / (4 * sigma_side_p2);
+            double g_b = std::sin(2 * target_yaw) / (4 * sigma_front_p2) - std::sin(2 * target_yaw) / (4 * sigma_side_p2);
             double g_c = sin_p2 / (2 * sigma_front_p2) + cos_p2 / (2 * sigma_side_p2);
             double z = 1.0 / std::exp(g_a * std::pow(x, 2) + 2 * g_b * x * y + g_c * std::pow(y, 2)) * peak_value;
-
-            // double r = sqrt(x * x + y * y);
-            // double z = (1 / sqrt(1 + pow(r / filter_radius, (2 * filter_order)))) * peak_value;
             tmp_row.push_back(z);
         }
         agf_kernel.push_back(tmp_row);
     }
 
+    // cout << "target_yaw: " << target_yaw << endl;
     // for(int i = 0; i < agf_kernel.size(); i++){
     //     for(int j = 0; j < agf_kernel[i].size(); j++){
     //         if(i == agf_kernel.size() / 2 && j == agf_kernel[0].size() / 2)
@@ -203,16 +209,12 @@ void Scan2LocalmapNode::asymmetric_gaussian_filter(vector<int8_t> &vec, double m
     // }
     agf_kernel[agf_kernel.size() / 2][agf_kernel[0].size() / 2] = peak_value;
 
-    cout << "kernel size: (" << agf_kernel.size() << ", " << agf_kernel[0].size() << ")" << endl;
+    // cout << "kernel size: (" << agf_kernel.size() << ", " << agf_kernel[0].size() << ")" << endl;
     if(agf_kernel.size() % 2 == 0){
         ROS_ERROR("Even kernel size! Please assign the new filter radius so that it can generate odd kernel size");
         exit(-1);
     }
-    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
-
-    exit(-1);
-
+    
     int kernel_size = agf_kernel.size();
     int bound = agf_kernel.size() / 2;
 
@@ -227,61 +229,17 @@ void Scan2LocalmapNode::asymmetric_gaussian_filter(vector<int8_t> &vec, double m
                 vec[op_idx] = agf_kernel[y + bound][x + bound];
         }
     }
+
+    // std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    // std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
 }
 
 
-void Scan2LocalmapNode::butterworth_filter(vector<int8_t> &vec, int map_width, int map_height, int target_idx, int peak_value) {
-    int kernel_size = inflation_kernel_.size();
-    int bound = inflation_kernel_.size() / 2;
-
-    for(int y = -bound; y <= bound; y++) {
-        for (int x = -bound; x <= bound; x++) {
-            int op_idx = target_idx + x + map_width * y;
-            // if(vec[op_idx] < 0) continue;                                 // do not apply filter out of laser range
-            if(inflation_kernel_[y + bound][x + bound] == 0 || vec[op_idx] >= inflation_kernel_[y + bound][x + bound]) continue;
-            else if(op_idx < 0 || op_idx > map_width * map_height) continue;           // upper and bottom bound
-            else if(abs((op_idx % map_width) - (target_idx % map_width)) > bound) continue;  // left and right bound
-            else 
-                vec[op_idx] = inflation_kernel_[y + bound][x + bound];
-        }
-    }
-}
-
-
-void Scan2LocalmapNode::butterworth_filter_generate(double filter_radius, int filter_order, double map_resolution, int peak_value) {
-    double kernel_range = filter_radius * 4;
-    cout << "Filter kernel: " << endl;
-    for(double y = -kernel_range / 2 ; y <= kernel_range / 2 * 1.00000001; y += map_resolution){
-        vector<int8_t> tmp_row;
-        for(double x = -kernel_range / 2; x <= kernel_range / 2 * 1.00000001; x += map_resolution){
-            double r = sqrt(x * x + y * y);
-            double z = (1 / sqrt(1 + pow(r / filter_radius, (2 * filter_order)))) * peak_value;
-            tmp_row.push_back(z);
-        }
-        inflation_kernel_.push_back(tmp_row);
-    }
-
-    for(int i = 0; i < inflation_kernel_.size(); i++){
-        for(int j = 0; j < inflation_kernel_[i].size(); j++){
-            if(i == inflation_kernel_.size() / 2 && j == inflation_kernel_[0].size() / 2)
-                inflation_kernel_[i][j] = peak_value;
-            printf("%3d,", inflation_kernel_[i][j]);
-        }
-        cout << endl;
-    }
-
-    cout << "Inflation kernel size: (" << inflation_kernel_.size() << ", " << inflation_kernel_[0].size() << ")" << endl;
-    if(inflation_kernel_.size() % 2 == 0){
-        ROS_ERROR("Even kernel size! Please assign the new filter radius so that it can generate odd kernel size");
-        exit(-1);
-    }
-}
-
-
-void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
+void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_ptr) {
     // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+    sensor_msgs::LaserScan laser_msg = msg_ptr->scan;
 
-    // Convert laserscan to pointcloud:  laserscan --> ROS PointCloud2 --> PCL PointCloudXYZ
+// Convert laserscan to pointcloud:  laserscan --> ROS PointCloud2 --> PCL PointCloudXYZ
     sensor_msgs::PointCloud2 cloud_msg;
     PointCloudXYZPtr cloud_raw(new PointCloudXYZ);
     PointCloudXYZPtr cloud_transformed(new PointCloudXYZ);
@@ -290,8 +248,8 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
     pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_base2laser_);
 
     // Apply cropbox filter
-    // box_filter_.setInputCloud(cloud_transformed);
-    // box_filter_.filter(*cloud_transformed);
+    box_filter_.setInputCloud(cloud_transformed);
+    box_filter_.filter(*cloud_transformed);
 
     // Apply voxel grid filter
     vg_filter_.setInputCloud(cloud_transformed);
@@ -327,8 +285,101 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
         }
         if(is_behind_obstacle) continue;
         double closest_distance = *min_element(distance_list.begin(), distance_list.end());
-        localmap_ptr_->data[i] = (closest_distance <= 1.2)? 80 - (50.0 / (1 + std::exp(-2.0 * closest_distance)) - 25.0) / 55 * 85: 
-                                                            80 - (105.0 / (1 + std::exp(-0.5 * (closest_distance + 0.4))) - 51.5) / 55 * 85;
+        double comfort_value = (closest_distance <= 1.2)? (100.0 / (1 + std::exp(-2.0 * closest_distance)) - 50.0): 
+                                                        (210.0 / (1 + std::exp(-0.5 * (closest_distance + 0.4))) - 103.0);
+        localmap_ptr_->data[i] = (comfort_value < 80)? 80 - (int8_t)comfort_value: 0;
+    }
+
+    // Proxemics generation
+    for(int i = 0; i < msg_ptr->trks_list.size(); i++) {
+        // Convert object pose from laser coordinate to base coordinate
+        tf::Vector3 pt_laser(msg_ptr->trks_list[i].x, msg_ptr->trks_list[i].y, 0);
+        tf::Vector3 pt_base = tf_base2laser_.getBasis() * pt_laser + tf_base2laser_.getOrigin();
+        tf::Quaternion q;
+        q.setRPY(0, 0, msg_ptr->trks_list[i].yaw);
+        double yaw, pitch, roll;
+        tf::Matrix3x3 mat(q);
+        mat = tf_base2laser_.getBasis() * mat;
+        mat.getEulerYPR(yaw, pitch, roll);
+
+        double speed = std::hypot(msg_ptr->trks_list[i].vx, msg_ptr->trks_list[i].vy);
+
+        // Calculate object position in local map
+        int map_x = std::round((pt_base.getX() - map_origin_x) / resolution);
+        int map_y = std::round((pt_base.getY() - map_origin_y) / resolution);
+        int idx = map_y * map_width + map_x;
+
+        if((0 < idx) && (idx < map_limit) && (speed > 0.1)){
+            asymmetric_gaussian_filter(localmap_ptr_->data, resolution, map_width, map_height, idx, yaw, speed, 100);
+        }
+    }
+
+    // Publish localmap
+    ros::Time now = ros::Time(0);
+    localmap_ptr_->header.stamp = now;
+    pub_map_.publish(*localmap_ptr_);
+
+    // Publish footprint
+    footprint_ptr_->header.stamp = now;
+    pub_footprint_.publish(*footprint_ptr_);
+
+    // std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    // std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
+}
+
+
+void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
+    // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+
+    // Convert laserscan to pointcloud:  laserscan --> ROS PointCloud2 --> PCL PointCloudXYZ
+    sensor_msgs::PointCloud2 cloud_msg;
+    PointCloudXYZPtr cloud_raw(new PointCloudXYZ);
+    PointCloudXYZPtr cloud_transformed(new PointCloudXYZ);
+    projector_.projectLaser(laser_msg, cloud_msg);
+    pcl::fromROSMsg(cloud_msg, *cloud_raw);
+    pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_base2laser_);
+
+    // Apply cropbox filter
+    box_filter_.setInputCloud(cloud_transformed);
+    box_filter_.filter(*cloud_transformed);
+
+    // Apply voxel grid filter
+    vg_filter_.setInputCloud(cloud_transformed);
+    vg_filter_.filter(*cloud_transformed);
+
+    // Localmap init
+    std::fill(localmap_ptr_->data.begin(), localmap_ptr_->data.end(), -1);
+
+    double resolution = localmap_ptr_->info.resolution;
+    double map_origin_x = localmap_ptr_->info.origin.position.x;
+    double map_origin_y = localmap_ptr_->info.origin.position.y;
+    int map_width = localmap_ptr_->info.width;
+    int map_height = localmap_ptr_->info.height;
+    int map_limit = map_width * map_height;
+
+    for(int i = 0; i < localmap_ptr_->data.size(); i++) {
+        double grid_real_x = (i % map_width) * resolution + map_origin_x;
+        double grid_real_y = (i / map_width) * resolution + map_origin_y;
+        // printf("real xy (%.2f, %.2f)\n", grid_real_x, grid_real_y);
+        double grid_real_anlge = std::atan2(grid_real_y, grid_real_x);
+        double grid_real_distance = std::hypot(grid_real_x, grid_real_y);
+
+        bool is_behind_obstacle = false;
+        std::vector<double> distance_list;
+        for(int j = 0; j < cloud_transformed->points.size(); j++){
+            double obstacle_angle = std::atan2(cloud_transformed->points[j].y, cloud_transformed->points[j].x);
+            double obstacle_distance = std::hypot(cloud_transformed->points[j].x, cloud_transformed->points[j].y);
+            if(std::abs(obstacle_angle - grid_real_anlge) < (M_PI / 36) && obstacle_distance < grid_real_distance) {
+                is_behind_obstacle = true;
+                break;
+            }
+            distance_list.push_back(std::hypot(cloud_transformed->points[j].x - grid_real_x, cloud_transformed->points[j].y - grid_real_y));
+        }
+        if(is_behind_obstacle) continue;
+        double closest_distance = *min_element(distance_list.begin(), distance_list.end());
+        double comfort_value = (closest_distance <= 1.2)? (100.0 / (1 + std::exp(-2.0 * closest_distance)) - 50.0): 
+                                                        (210.0 / (1 + std::exp(-0.5 * (closest_distance + 0.4))) - 103.0);
+        localmap_ptr_->data[i] = (comfort_value < 80)? 80 - (int8_t)comfort_value: 0;
     }
 
     // Publish localmap

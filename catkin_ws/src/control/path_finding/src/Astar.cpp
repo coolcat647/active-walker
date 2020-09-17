@@ -14,6 +14,7 @@ Astar::Node::Node(Grid2D grid_, Node *parent_) {
     parent = parent_;
     grid = grid_;
     g_val = h_val = 0;
+    decision = -1;
 }
 ostream& operator<<(ostream& out, const Astar::Node& node) {
     out << "(x:" << node.grid.x << ", y:" << node.grid.y;
@@ -28,7 +29,7 @@ int Astar::Node::get_score() {
 Astar::Solver::Solver() {
     directions_ = {
         {0, 1}, {1, 0}, {0, -1}, {-1, 0},
-        {-1, -1}, {1, 1}, {-1, 1}, {1, -1} 
+        {-1, 1}, {1, 1}, {1, -1}, {-1, -1} 
     };
     set_heuristic(&Heuristic::manhattan);
     set_diagonal_move(true);
@@ -103,16 +104,19 @@ bool Astar::Solver::solve_ros(nav_msgs::OccupancyGrid::ConstPtr map_msg_ptr, nav
                 continue;                                           // Skip visited node & skip wall 
 
             int total_cost = against_wall_cost(cur_node->grid) + cur_node->g_val + ((i<4)? 10 : 14);    // Balance cost between 4 & 8 directions
+            
             Node* successor = find_node(open_set, tmp_grid);
             if(successor == nullptr){
                 successor = new Node(tmp_grid, cur_node);           // Expand a new node from current node
                 successor->g_val = total_cost;
-                successor->h_val = h_func_(successor->grid, goal);  // Calc the heuristic value 
+                successor->h_val = h_func_(successor->grid, goal);  // Calc the heuristic value
+                successor->decision = i;
                 open_set.push_back(successor);
             }else if(total_cost < successor->g_val){ 
                 // Update non-visited but expanded node if find that has lower cost    
                 successor->parent = cur_node;   
                 successor->g_val = total_cost;
+                successor->decision = i;
             }
         }
     } // while loop end

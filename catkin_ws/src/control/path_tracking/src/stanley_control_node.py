@@ -21,7 +21,7 @@ dt = 0.1  # [s] time difference
 L = 0.6  # [m] Wheel base of vehicle
 max_steer = np.radians(30.0)  # [rad] max steering angle
 CMD_RATE = 5.0
-MAX_ANGULAR_VELOCITY = 0.8
+MAX_ANGULAR_VELOCITY = 1.0
 
 class StanleyControlNode(object):
     def __init__(self):
@@ -204,7 +204,7 @@ if __name__ == '__main__':
     rospy.init_node('stanley_control_node', anonymous=False)
     node = StanleyControlNode()
     
-    target_speed = 0.25
+    target_speed = 0.4
     is_first_run = True
     last_run_time = None
 

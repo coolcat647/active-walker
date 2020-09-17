@@ -214,7 +214,7 @@ bool AstarPathfindingNode::is_path_safe(const nav_msgs::OccupancyGrid::ConstPtr 
         int map_x = std::round((vec_transformed.getX() - map_origin_x) / map_resolution);
         int map_y = std::round((vec_transformed.getY() - map_origin_y) / map_resolution);
         int idx = map_y * map_width + map_x;
-        if(map_msg_ptr->data[idx] >= 80 || map_msg_ptr->data[idx] < 0) {
+        if(map_msg_ptr->data[idx] >= 60 || map_msg_ptr->data[idx] < 0) {
             return false;
         }
     }

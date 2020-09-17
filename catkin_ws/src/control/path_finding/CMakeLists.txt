@@ -169,16 +169,14 @@ target_link_libraries(fake_map_node ${PROJECT_NAME} ${catkin_LIBRARIES})
 
 add_executable(scan2localmap_node src/scan2localmap_node.cpp)
 target_link_libraries(scan2localmap_node ${catkin_LIBRARIES})
+add_dependencies(scan2localmap_node walker_msgs_generate_messages_cpp)
 
 add_executable(scan2comfortmap_node src/scan2comfortmap_node.cpp)
 target_link_libraries(scan2comfortmap_node ${catkin_LIBRARIES})
+add_dependencies(scan2comfortmap_node walker_msgs_generate_messages_cpp)
 
 add_executable(path_finding_node src/path_finding_node.cpp)
 target_link_libraries(path_finding_node ${PROJECT_NAME} ${catkin_LIBRARIES})
-
-add_executable(object2localmap_node src/object2localmap_node.cpp)
-target_link_libraries(object2localmap_node ${PROJECT_NAME} ${catkin_LIBRARIES})
-add_dependencies(object2localmap_node walker_msgs_generate_messages_cpp)
 
 #############
 ## Install ##
