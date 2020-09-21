@@ -1,13 +1,16 @@
 # active-walker
 The repo is prepared for the active walker project for elders or people in mobility impaired.
 
-## Prerequisite
+
+## I. Prerequisite
 a. Dependencies (Please check out "Trouble shooting section" once you get installation problem.)
 ```bash
 $ sudo apt-get install -y libavcodec-dev \
   gfortran \
   llvm-8 \
   libswscale-dev \
+  libgeographic-dev \
+  ros-melodic-geographic-msgs \
   ros-melodic-driver-base \
   ros-melodic-vision-opencv \
   ros-melodic-pcl-ros \
@@ -26,7 +29,8 @@ $ pip3 install --user rospkg \
   gdown
 ```
 
-## Setup 
+
+## II. Setup 
 a. Build the packages with Python 3.6 compatible configuration
 ```bash
 $ cd active-walker/catkin_ws
@@ -44,8 +48,28 @@ $ source devel/setup.sh
 $ rosrun yolov4_pytorch download_weights.py   # Size of pre-trained model: ~282MB
 ```
 
+
+## III. Docker (assume you have already installed nvidia-docker)
+a. Build the docker image (takes about 15 mins)
+```bash
+# In the "Dockerfiles" directory, assume you have nvidia-driver (version >= 418)
+$ source docker_build.sh
+```
+b. Launch  the docker container
+```bash
+# In the project root directory
+$ source docker_run.sh cuda10
+---- In the container ----
+developer$ # Do something interesting
+```
+b. Get into the same docker container via another terminal 
+```bash
+# Another terminal, in the project root directory
+$ source docker_run.sh same
+```
+
 ___
-## Trouble shooting
+## IV. Trouble shooting
 a. Cannot find OpenCV library problem in JetPack 4 device --> create soft link near the "/usr/include/opencv4" 
 ```bash
 $ sudo ln -s /usr/include/opencv4/ /usr/include/opencv
