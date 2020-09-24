@@ -33,33 +33,36 @@ class ForceFilteringNode(object):
                               [0,0,0,0,1,0],
                               [0,0,0,0,0,1]])
 
-        self.kf.R[0:,0:] *= 10.   # measurement uncertainty
+        self.kf.R[0:,0:] *= 0.1   # measurement uncertainty        
+        # self.kf.Q[-1,-1] *= 0.01    # process uncertainty
         self.kf.P *= 10.
 
-        # self.kf.Q[-1,-1] *= 0.01    # process uncertainty
-        self.kf.Q[:, :] *= 0.01
-        # self.kf.x[:3] = det2D.reshape((3, 1)) # x, y, r
+        self.kf.Q[:, :] *= 10. #0.01
+        
+        if rospy.get_param('~use_default_offset', True):
+            self.force_offset = np.array([-16.60148969, -13.33039515, -18.94458855, 2.96805553, 0.3066922, 0.39198671])
+        else:
+            # Calculate the offset by force averaging
+            force_data_array = np.zeros(FORCE_DATA_DIMENSION)
+            for i in range(1, 250*4):
+                try:
+                    msg = rospy.wait_for_message('/force', WrenchStamped, timeout=0.5)    
+                except rospy.ROSException as e:
+                    rospy.logerr("Timeout while waiting for force data!")
+                    exit(-1)
 
-        # Calculate the offset by force averaging
-        force_data_array = np.zeros(FORCE_DATA_DIMENSION)
-        for i in range(1, 250):
-            try:
-                msg = rospy.wait_for_message('/force', WrenchStamped, timeout=0.1)    
-            except rospy.ROSException as e:
-                rospy.logerr("Timeout while waiting for force data!")
-                exit(-1)
+                tmp_force = np.array([msg.wrench.force.x, msg.wrench.force.y, msg.wrench.force.z,
+                                        msg.wrench.torque.x, msg.wrench.torque.y, msg.wrench.torque.z], dtype=np.float32)
+                if force_data_array.shape == 0:
+                    force_data_array = tmp_force
+                else:
+                    force_data_array = np.vstack((force_data_array, tmp_force))
+                    # print(force_data_array.shape)
 
-            tmp_force = np.array([msg.wrench.force.x, msg.wrench.force.y, msg.wrench.force.z,
-                                    msg.wrench.torque.x, msg.wrench.torque.y, msg.wrench.torque.z], dtype=np.float32)
-            if force_data_array.shape == 0:
-                force_data_array = tmp_force
-            else:
-                force_data_array = np.vstack((force_data_array, tmp_force))
-                # print(force_data_array.shape)
-
-        # Force offset & initial value
-        self.force_offset = np.average(force_data_array, axis=0)
-        self.kf.x[:] = (force_data_array[-1, :] - self.force_offset).reshape((FORCE_DATA_DIMENSION, 1))
+            # Force offset & initial value
+            self.force_offset = np.average(force_data_array, axis=0)
+            self.kf.x[:] = (force_data_array[-1, :] - self.force_offset).reshape((FORCE_DATA_DIMENSION, 1))
+            print(self.force_offset)
 
         self.pub_force = rospy.Publisher('/force_filtered', WrenchStamped, queue_size=1)
         self.sub_force = rospy.Subscriber("/force", WrenchStamped, self.force_cb, queue_size=1)

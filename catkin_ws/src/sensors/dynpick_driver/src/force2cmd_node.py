@@ -11,32 +11,53 @@ import numpy as np
 import rospy
 from geometry_msgs.msg import WrenchStamped, Vector3, Twist
 
-MAX_FORCE = 50.0
-MAX_TORQUE = 50.0
+MIN_ENABLE_FORCE = 5.0
+MIN_ENABLE_TORQUE = 2.0
 
-MAX_LINEAR_VELOCITY = 0.5
-MIN_LINEAR_VELOCITY = 0.0
-MAX_ANGULAR_VELOCITY = 0.5
+MAX_LINEAR_VELOCITY = 0.6
+MAX_ANGULAR_VELOCITY = 1.4
+
+MASS = 30.0
+MOMENT_OF_INERTIA = 2.61 / 2.0 
+DAMPING_XY = 40.0
+DAMPING_THETA = 8.0
 
 class Force2CmdNode(object):
     def __init__(self):
+        self.last_time = None
+        self.last_linear_velocity = 0
+        self.last_angular_velocity = 0
+
         self.pub_vel = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
         self.sub_force = rospy.Subscriber("/force_filtered", WrenchStamped, self.force_cb, queue_size=1)
-        print(rospy.get_name() + ' is ready.')
+        rospy.loginfo(rospy.get_name() + ' is ready.')
         
 
     def force_cb(self, msg):
-        force_y = min(msg.wrench.force.y, MAX_FORCE)
-        torque_z = min(msg.wrench.torque.z, MAX_TORQUE)
+        if self.last_time is None:
+            self.last_time = rospy.Time().now()
+            return
 
-        linear_vel = max(force_y / MAX_FORCE * MAX_LINEAR_VELOCITY, MIN_LINEAR_VELOCITY)
-        angular_vel = torque_z / MAX_TORQUE * MAX_ANGULAR_VELOCITY
+        force_y = msg.wrench.force.y if np.abs(msg.wrench.force.y) > MIN_ENABLE_FORCE else 0.0
+        torque_z = msg.wrench.torque.z if np.abs(msg.wrench.torque.z) > MIN_ENABLE_TORQUE else 0.0
 
+        now_time = rospy.Time().now()
+        dt = (now_time - self.last_time).to_sec()
+        
+        # Calculate target velocity by human force
+        linear_velocity = (force_y / MASS * dt + self.last_linear_velocity) / (1 + DAMPING_XY / MASS * dt)
+        angular_velocity = (torque_z / MOMENT_OF_INERTIA * dt + self.last_angular_velocity) / (1 + DAMPING_THETA / MOMENT_OF_INERTIA * dt)
+        
         cmd_msg = Twist()
-        cmd_msg.linear.x = linear_vel
-        cmd_msg.angular.z = angular_vel
+        cmd_msg.linear.x = np.clip(linear_velocity, -MAX_LINEAR_VELOCITY, MAX_LINEAR_VELOCITY)
+        cmd_msg.angular.z = np.clip(angular_velocity, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY)
+        rospy.loginfo("v, omega = ({:.2f},{:.2f})".format(cmd_msg.linear.x, cmd_msg.angular.z))
         self.pub_vel.publish(cmd_msg)
         
+        self.last_time = now_time
+        self.last_linear_velocity = linear_velocity
+        self.last_angular_velocity = angular_velocity
+
 
 if __name__ == '__main__':
     rospy.init_node('force2cmd_node', anonymous=False)

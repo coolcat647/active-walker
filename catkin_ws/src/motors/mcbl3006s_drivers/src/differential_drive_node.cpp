@@ -253,7 +253,7 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     odom_msg.pose.covariance[21] = 1e10;    // yaw y axis
     odom_msg.pose.covariance[28] = 1e10;    // yaw z axis
     odom_msg.twist.twist.linear.x = real_v;
-    odom_msg.twist.twist.angular.y = real_omega;
+    odom_msg.twist.twist.angular.z = real_omega;
 
     pub_odom_.publish(odom_msg);
 
