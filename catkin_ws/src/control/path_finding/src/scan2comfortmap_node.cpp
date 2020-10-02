@@ -78,11 +78,13 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     double inflation_radius;
     double map_resolution;
     double localmap_range_x, localmap_range_y;
+    string scan_src_frameid;
     ros::param::param<double>("~inflation_radius", inflation_radius, 0.2);
     ros::param::param<double>("~map_resolution", map_resolution, 0.1);
     ros::param::param<double>("~localmap_range_x", localmap_range_x, 10.0);     // map_width --> x axis
     ros::param::param<double>("~localmap_range_y", localmap_range_y, 10.0);     // map_height --> y_axis
     ros::param::param<string>("~localmap_frameid", localmap_frameid_, "base_link");
+    ros::param::param<string>("~scan_src_frameid", scan_src_frameid, "laser_link");
     ros::param::param<bool>("~use_agf", flag_agf_using_, false);
     
     // ROS publishers & subscribers
@@ -98,9 +100,9 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     tflistener_ptr_ = new tf::TransformListener();
     ROS_INFO("Wait for TF from laser_link to %s in 10 seconds...", localmap_frameid_.c_str());
     try{
-        tflistener_ptr_->waitForTransform(localmap_frameid_, "laser_link",
+        tflistener_ptr_->waitForTransform(localmap_frameid_, scan_src_frameid,
                                     ros::Time(), ros::Duration(10.0));
-        tflistener_ptr_->lookupTransform(localmap_frameid_, "laser_link",
+        tflistener_ptr_->lookupTransform(localmap_frameid_, scan_src_frameid,
                                     ros::Time(), tf_base2laser_);
         ROS_INFO("Done.");
     }
