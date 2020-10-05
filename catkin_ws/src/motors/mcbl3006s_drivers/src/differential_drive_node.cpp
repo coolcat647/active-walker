@@ -45,10 +45,10 @@ DiffDriveNode::DiffDriveNode(){
                                                    &DiffDriveNode::motor_disable_cb,
                                                    this);
     int baudrate;
-    bool flag_motor_disable = false;
+    flag_motor_disable_ = false;
     string serial_device;
     // User-accessible parameters
-    ros::param::param<bool>("~motor_disable", flag_motor_disable, false);
+    ros::param::param<bool>("~motor_disable", flag_motor_disable_, false);
     ros::param::param<std::string>("~serial_device", serial_device, "/dev/ttyUSB0");  // /dev/walker_motor_left
     
     // Fixed parameters
@@ -62,7 +62,7 @@ DiffDriveNode::DiffDriveNode(){
     ros::param::param<double>("~command_interval", command_interval, 0.1);     // Car command time interval
     ros::param::param<double>("~watchdog_interval", watchdog_interval_, 0.5);   // Watchdog for robot safety
 
-    motors_init(serial_device, baudrate, flag_motor_disable);
+    motors_init(serial_device, baudrate, flag_motor_disable_);
     
     
     double odom_timer_interval = 0.025;
@@ -179,7 +179,7 @@ void DiffDriveNode::emergency_stop(void) {
 
 void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     // Send rpm command to motors
-    if(++cmd_timer_cnt_ >= max_timer_counter_){
+    if(++cmd_timer_cnt_ >= max_timer_counter_ && !flag_motor_disable_){
         // Watchdog for robot safety
         if(ros::Time::now() - last_cmd_time_ >= ros::Duration(watchdog_interval_)){
             cmd_msg_ = geometry_msgs::Twist();      // zero v, zero omega

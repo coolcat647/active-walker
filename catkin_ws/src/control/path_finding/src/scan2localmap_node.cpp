@@ -78,6 +78,7 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     double inflation_radius;
     double map_resolution;
     double localmap_range_x, localmap_range_y;
+    string scan_src_frameid;
     ros::param::param<double>("~inflation_radius", inflation_radius, 0.2);
     ros::param::param<double>("~map_resolution", map_resolution, 0.1);
     ros::param::param<double>("~localmap_range_x", localmap_range_x, 10.0);     // map_width --> x axis

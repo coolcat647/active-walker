@@ -75,4 +75,6 @@ private:
 
     geometry_msgs::TransformStamped odom_tf_msg_;
     nav_msgs::Odometry odom_msg_;
+
+    bool flag_motor_disable_;
 };
