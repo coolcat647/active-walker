@@ -14,4 +14,6 @@
     <remap from="/force" to="$(arg topic)" />
     <param name="acquire_calibration" value="true"/>
   </node>
+
+  <node pkg="dynpick_driver" name="force_filtering_node" type="force_filtering_node.py" />
 </launch>

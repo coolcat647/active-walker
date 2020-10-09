@@ -96,12 +96,14 @@ bool DiffDriveNode::motor_disable_cb(std_srvs::SetBoolRequest& req, std_srvs::Se
         send_motor_cmd(serial_port_ptr_, "2V0");
         send_motor_cmd(serial_port_ptr_, "1DI");
         send_motor_cmd(serial_port_ptr_, "2DI");
+        flag_motor_disable_ = true;
         message = "Motor disable";
     }else{
         // send_motor_cmd(serial_port_ptr_, "1V0");
         // send_motor_cmd(serial_port_ptr_, "2V0");
         send_motor_cmd(serial_port_ptr_, "1EN");
         send_motor_cmd(serial_port_ptr_, "2EN");
+        flag_motor_disable_ = false;
         message = "Motor enable";
     }
 
