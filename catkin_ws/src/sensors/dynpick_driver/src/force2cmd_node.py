@@ -54,8 +54,8 @@ class Force2CmdNode(object):
         # Calculate target velocity by human force
         # linear_velocity = (force_y / MASS * dt + self.last_linear_velocity) / (1 + DAMPING_XY / MASS * dt)
         # angular_velocity = (torque_z / MOMENT_OF_INERTIA * dt + self.last_angular_velocity) / (1 + DAMPING_THETA / MOMENT_OF_INERTIA * dt)
-        linear_velocity = self.last_linear_velocity * 0.9087 + force_y * 0.0028
-        angular_velocity = self.last_angular_velocity * 0.9028 + torque_z * 0.0051
+        linear_velocity = self.last_linear_velocity * 0.9087 * 0.7 + force_y * 0.0028 * 1.5
+        angular_velocity = self.last_angular_velocity * 0.9028 * 0.5 + torque_z * 0.0051 * 7.5
         
         cmd_msg = Twist()
         cmd_msg.linear.x = np.clip(linear_velocity, -MAX_LINEAR_VELOCITY, MAX_LINEAR_VELOCITY)
