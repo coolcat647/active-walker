@@ -4,6 +4,13 @@
     <xacro:arg name="laser_xyz" default="$(optenv HUSKY_LMS1XX_XYZ 0.2206 0.0 0.00635)" />
     <xacro:arg name="laser_rpy" default="$(optenv HUSKY_LMS1XX_RPY 0.0 0.0 0.0)" />
 
+    <xacro:arg name="rear_wheel_mass" default="1.0" />
+    <xacro:arg name="rear_wheel_radius" default="0.0625" />
+    <xacro:arg name="rear_wheel_width" default="0.02" />
+
+    <xacro:arg name="front_wheel_mass" default="0.5" />
+    <xacro:arg name="front_wheel_radius" default="0.025" />
+
     <!-- <xacro:arg name="robot_namespace" default="/" />  -->
     <xacro:arg name="robot_namespace" default="active_walker" />
 
@@ -22,7 +29,7 @@
     <!-- Base link -->
     <link name="base_link">
         <inertial>
-            <origin xyz="0.26321 1.2785E-06 0.15671" rpy="0 0 0" />
+            <origin xyz="0.26321 0.0 0.15671" rpy="0 0 0" />
             <!-- <mass value="3.5774" /> -->
             <mass value="7.0" />
             <inertia ixx="0.29508" ixy="1.3791E-07" ixz="0.001404"
@@ -49,16 +56,16 @@
     <link name="rear_right_wheel_link">
         <inertial>
             <origin xyz="0 0 0" rpy="0 0 0" />
-            <!-- <mass value="0.18877" /> -->
-            <mass value="10.0" />
+            <mass value="$(arg rear_wheel_mass)" />
             <!-- <inertia ixx="0.00013887" ixy="-1.6386E-36" ixz="2.1452E-37"
                     iyy="0.00013887" iyz="-7.5427E-20" izz="0.00026251" /> -->
-            <cylinder_inertia m="10.0" r="0.0625" h="0.02" />
+            <cylinder_inertia m="$(arg rear_wheel_mass)" r="$(arg rear_wheel_radius)" h="$(arg rear_wheel_width)" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://walker_description/meshes/rear_right_wheel_link.STL" />
+                <!-- <mesh filename="package://walker_description/meshes/rear_right_wheel_link.STL" /> -->
+                <cylinder length="$(arg rear_wheel_width)" radius="$(arg rear_wheel_radius)"/>
             </geometry>
             <material name="">
                 <color rgba="0.175 0.175 0.175 1" />
@@ -67,7 +74,8 @@
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://walker_description/meshes/rear_right_wheel_link.STL" />
+                <!-- <mesh filename="package://walker_description/meshes/rear_right_wheel_link.STL" /> -->
+                <cylinder length="$(arg rear_wheel_width)" radius="$(arg rear_wheel_radius)"/>
             </geometry>
         </collision>
     </link>
@@ -75,24 +83,27 @@
         <origin xyz="0 -0.301 -0.03" rpy="-1.5708 0 0" />
         <parent link="base_link" />
         <child link="rear_right_wheel_link" />
-        <axis xyz="0 0.099176 0.99507" />
-        <dynamics friction="0.001" />
+        <!-- <axis xyz="0 0.099176 0.99507" /> -->
+        <axis xyz="0 0 1" />
+        <!-- <dynamics friction="0.001" /> -->
+        <joint_properties damping="0.0" friction="0.0"/>
+        <limit effort="100" velocity="100"/>
     </joint>
 
     <!-- Rear left wheel link & joint -->
     <link name="rear_left_wheel_link">
         <inertial>
             <origin xyz="0 0 0" rpy="0 0 0" />
-            <!-- <mass value="0.18877" /> -->
-            <mass value="10.0" />
+            <mass value="$(arg rear_wheel_mass)" />
             <!-- <inertia ixx="0.00013887" ixy="4.2884E-36" ixz="-8.5028E-20"
                     iyy="0.00013887" iyz="-7.5708E-21" izz="0.00026251" /> -->
-            <cylinder_inertia m="10.0" r="0.0625" h="0.02" />
+            <cylinder_inertia m="$(arg rear_wheel_mass)" r="$(arg rear_wheel_radius)" h="$(arg rear_wheel_width)" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://walker_description/meshes/rear_left_wheel_link.STL" />
+                <!-- <mesh filename="package://walker_description/meshes/rear_left_wheel_link.STL" /> -->
+                <cylinder length="$(arg rear_wheel_width)" radius="$(arg rear_wheel_radius)"/>
             </geometry>
             <material name="">
                 <color rgba="0.175 0.175 0.175 1" />
@@ -101,7 +112,8 @@
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://walker_description/meshes/rear_left_wheel_link.STL" />
+                <!-- <mesh filename="package://walker_description/meshes/rear_left_wheel_link.STL" /> -->
+                <cylinder length="$(arg rear_wheel_width)" radius="$(arg rear_wheel_radius)"/>
             </geometry>
         </collision>
     </link>
@@ -109,9 +121,12 @@
         <origin xyz="0 0.301 -0.03" rpy="-1.5708 0 0" />
         <parent link="base_link" />
         <child link="rear_left_wheel_link" />
-        <axis xyz="0 0.099176 0.99507" />
-        <limit lower="0" upper="0" effort="0" velocity="0" />
-        <dynamics friction="0.001" />
+        <!-- <axis xyz="0 0.099176 0.99507" /> -->
+        <axis xyz="0 0 1" />
+        <!-- <limit lower="0" upper="0" effort="0" velocity="0" /> -->
+        <!-- <dynamics friction="0.001" /> -->
+        <joint_properties damping="0.0" friction="0.0"/>
+        <limit effort="100" velocity="100"/>
     </joint>
 
     <!-- Force sensor link & joint -->
@@ -181,12 +196,9 @@
     <!-- Front right caster wheel link & joint-->
     <link name="front_right_caster_wheel_link">
         <inertial>
-            <origin xyz="-0.0042994 2.0823E-06 -0.0092241" rpy="0 0 0" />
-            <!-- <mass value="0.062864" /> -->
-            <mass value="0.5" />
-            <!-- <inertia ixx="1.8333E-05" ixy="-2.766E-10" ixz="-4.2964E-07"
-                    iyy="3.1598E-05" iyz="-9.745E-11" izz="2.0211E-05" /> -->
-            <sphere_inertia m="0.5" r="0.025"/>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <mass value="$(arg front_wheel_mass)" />
+            <sphere_inertia m="$(arg front_wheel_mass)" r="$(arg front_wheel_radius)"/>
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
@@ -214,12 +226,9 @@
     <!-- Front left caster wheel link & joint-->
     <link name="front_left_caster_wheel_link">
         <inertial>
-            <origin xyz="-0.0042994 2.0823E-06 -0.0092241" rpy="0 0 0" />
-            <!-- <mass value="0.062864" /> -->
-            <mass value="0.5" />
-            <!-- <inertia ixx="1.8333E-05" ixy="-2.766E-10" ixz="-4.2964E-07"
-                    iyy="3.1598E-05" iyz="-9.745E-11" izz="2.0211E-05" /> -->
-            <sphere_inertia m="0.5" r="0.025"/>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <mass value="$(arg front_wheel_mass)" />
+            <sphere_inertia m="$(arg front_wheel_mass)" r="$(arg front_wheel_radius)"/>
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
