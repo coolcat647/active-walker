@@ -1,0 +1,82 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <!-- <gazebo reference="base_link">
+        <mu1 value="0.0"/>
+        <mu2 value="0.0"/>
+        <kp value="1000000.0" />
+        <kp value="100.0" />
+        <minDepth value="0.001" />
+        <maxVel value="1.0" />
+        <material>Gazebo/LightBlue</material>
+    </gazebo> -->
+
+    <gazebo reference="rear_right_wheel_link">
+        <mu1 value="1.0"/>
+        <mu2 value="1.0"/>
+        <kp  value="10000000.0" />
+        <kd  value="100.0" />
+        <fdir1 value="1 0 0"/>
+        <material>Gazebo/DarkGrey</material>
+    </gazebo>
+
+    <gazebo reference="rear_left_wheel_link">
+        <mu1 value="1.0"/>
+        <mu2 value="1.0"/>
+        <kp  value="10000000.0" />
+        <kd  value="100.0" />
+        <fdir1 value="1 0 0"/>
+        <material>Gazebo/DarkGrey</material>
+    </gazebo>
+
+    <gazebo reference="front_right_caster_wheel_link">
+        <mu1 value="0.0" />
+        <mu2 value="0.0" />
+        <kp value="1000000.0" />
+        <kd value="100.0" />
+        <minDepth value="0.001" />
+        <maxVel value="1.0" />
+    </gazebo>
+    <gazebo reference="front_right_caster_wheel_link">
+        <mu1 value="0.0" />
+        <mu2 value="0.0" />
+        <kp value="1000000.0" />
+        <kd value="100.0" />
+        <minDepth value="0.001" />
+        <maxVel value="1.0" />
+    </gazebo>
+
+     <gazebo reference="force_sensor_link">
+        <material>Gazebo/Red</material>
+    </gazebo>
+
+
+    <!--        -->
+    <!-- Plugin -->
+    <!--        -->
+    <gazebo>
+        <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+            <robotNamespace>/active_walker</robotNamespace>
+        </plugin>
+    </gazebo>
+
+    <gazebo>
+        <plugin name="differential_drive_controller" filename="libgazebo_ros_diff_drive.so">
+        <robotNamespace>/active_walker</robotNamespace>
+        <legacyMode>false</legacyMode>
+        <alwaysOn>true</alwaysOn>
+        <updateRate>10</updateRate>
+        <leftJoint>rear_left_wheel_joint</leftJoint>
+        <rightJoint>rear_right_wheel_joint</rightJoint>
+        <wheelSeparation>0.6</wheelSeparation>
+        <wheelDiameter>0.105</wheelDiameter>
+        <torque>20</torque>
+        <commandTopic>/cmd_vel</commandTopic>
+        <odometryTopic>/wheel_odom</odometryTopic>
+        <odometryFrame>odom</odometryFrame>
+        <robotBaseFrame>footprint</robotBaseFrame>
+        </plugin>
+    </gazebo>
+
+
+</robot>
