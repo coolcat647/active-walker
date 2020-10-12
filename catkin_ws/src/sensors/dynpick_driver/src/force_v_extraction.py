@@ -25,7 +25,6 @@ last_v = 0
 last_omega = 0
 
 exported_file = None
-# pose_update_mutex = threading.Lock()
 
 def callback(force_msg, odom_msg):
     global last_robot_x
@@ -54,6 +53,17 @@ def callback(force_msg, odom_msg):
 
     now_time = rospy.Time.now()
     dt = (now_time - last_time).to_sec()
+    if dt > 1.0:
+        last_time = rospy.Time.now()
+        last_robot_x = odom_msg.pose.pose.position.x
+        last_robot_y = odom_msg.pose.pose.position.y
+        euler_angle = euler_from_quaternion([odom_msg.pose.pose.orientation.x, 
+                                            odom_msg.pose.pose.orientation.y, 
+                                            odom_msg.pose.pose.orientation.z, 
+                                            odom_msg.pose.pose.orientation.w])
+        last_robot_theta = euler_angle[2]
+        last_v = 0
+        last_omega = 0
 
     # Odom msg process
     x_dot = (odom_msg.pose.pose.position.x - last_robot_x) / dt
@@ -80,10 +90,12 @@ def callback(force_msg, odom_msg):
     last_v = v
     last_omega = omega
 
-def shutdown_cb(self):
+
+def shutdown_cb():
     global exported_file
     exported_file.close()
     rospy.loginfo("Shutdown " + rospy.get_name())
+
 
 if __name__ == '__main__':
     rospy.init_node('force_v_extraction', anonymous=False)
