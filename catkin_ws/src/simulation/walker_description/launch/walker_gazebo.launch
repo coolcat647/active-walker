@@ -25,4 +25,16 @@
     <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
         args="-urdf -model active_walker -param robot_description"/>
 
+    <!-- convert joint states to TF transforms for rviz, etc -->
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" respawn="false" output="screen">
+        <param name="robot_description" command="$(find xacro)/xacro.py '$(find walker_description)/urdf/walker.urdf.xacro'" />
+        <!-- <remap from="/joint_states" to="/mybot/joint_states" /> -->
+    </node>
+
+    <!-- load the controllers -->
+    <!-- <rosparam file="$(find walker_description)/config/walker_control.yaml" command="load"/>
+    <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" ns="/" args="joint_state_controller
+                      rear_right_wheel_effort_controller
+                      rear_left_wheel_effort_controller"/>
+ -->
 </launch>

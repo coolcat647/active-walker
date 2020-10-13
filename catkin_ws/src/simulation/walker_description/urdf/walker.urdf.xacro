@@ -52,6 +52,16 @@
         </collision>
     </link>
 
+
+    <!-- Footprint -->
+    <!-- <link name="footprint" />
+    <joint name="footprint_joint" type="fixed">
+        <origin xyz="0 0 -0.12671" rpy="0 0 0" />
+        <parent link="base_link"/>
+        <child link="footprint"/>
+    </joint> -->
+
+
     <!-- Rear right wheel link & joint -->
     <link name="rear_right_wheel_link">
         <inertial>
@@ -89,6 +99,7 @@
         <joint_properties damping="0.0" friction="0.0"/>
         <limit effort="100" velocity="100"/>
     </joint>
+
 
     <!-- Rear left wheel link & joint -->
     <link name="rear_left_wheel_link">
@@ -129,6 +140,7 @@
         <limit effort="100" velocity="100"/>
     </joint>
 
+
     <!-- Force sensor link & joint -->
     <link name="force_sensor_link">
     <inertial>
@@ -161,6 +173,7 @@
         <axis xyz="0 0 0" />
     </joint>
    
+
     <!-- Handrail link -->
     <link name="handrail_link">
         <inertial>
@@ -193,6 +206,7 @@
         <axis xyz="0 0 0" />
     </joint>
 
+
     <!-- Front right caster wheel link & joint-->
     <link name="front_right_caster_wheel_link">
         <inertial>
@@ -222,6 +236,7 @@
         <child link="front_right_caster_wheel_link" />
         <axis xyz="0 0 0" />
     </joint>
+
 
     <!-- Front left caster wheel link & joint-->
     <link name="front_left_caster_wheel_link">
