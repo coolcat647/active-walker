@@ -3,7 +3,7 @@
 
     <!-- Gazebo YDLiDAR G4 plugin -->
     <xacro:macro name="ydlidar_g4" params="frame:=laser topic:=scan sample_size:=750 update_rate:=11
-               min_angle:=-3.1415926 max_angle:=3.1415926 min_range:=0.1 max_range:=16.0 robot_namespace:=/" >
+               min_angle:=-3.1415926 max_angle:=3.1415926 min_range:=0.26 max_range:=16.0 robot_namespace:=/" >
         <link name="${frame}_base">
             <inertial>
                 <origin xyz="-0.00029774 0.0066667 0.00013047" rpy="0 0 0" />
@@ -83,7 +83,7 @@
                 <plugin name="gazebo_ros_${frame}" filename="libgazebo_ros_laser.so">
                     <updateRate>${update_rate}</updateRate>
                     <topicName>${topic}</topicName>
-                    <frameName>${frame}_link</frameName>
+                    <frameName>/${frame}_link</frameName>
                     <robotNamespace>$(arg robot_namespace)</robotNamespace>
                 </plugin>
             </sensor>
