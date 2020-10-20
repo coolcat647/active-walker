@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # coding=utf-8
 '''
 Author:Tai Lei
@@ -24,7 +24,7 @@ class MountTB2Ped(object):
         
 
     def callback(self, data):
-        for item in xrange(self.actor_number):
+        for item in range(self.actor_number):
             actor_idx_ = data.name.index(self.actor_name[:-1]+str(item))
             actor_pose_ = data.pose[actor_idx_].position
             actor_quat_ = self.quat_trans(data.pose[actor_idx_].orientation)
@@ -33,7 +33,7 @@ class MountTB2Ped(object):
                     rospy.Time.now(),
                     self.actor_name[:-1]+str(item),
                     "default_world")
-            print self.actor_name[:-1]+str(item)
+            print(self.actor_name[:-1]+str(item))
             #if item == str(self.actor_name[-1]):
                 #self.robot_pose = actor_pose_
                 #self.robot_quat = actor_quat_

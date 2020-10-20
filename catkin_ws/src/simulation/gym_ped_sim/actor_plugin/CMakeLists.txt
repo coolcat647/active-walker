@@ -18,6 +18,10 @@ link_directories(${GAZEBO_LIBRARY_DIRS})
 list(APPEND CMAKE_CXX_FLAGS "${GAZEBO_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GAZEBO_CXX_FLAGS}")
 
+# samliu 20201020 modification: the gazebo plugin library would be built failed
+# if the build type is "Release"
+SET(CMAKE_BUILD_TYPE None)
+
 add_library(actorplugin_ros SHARED src/ActorPlugin_ros.cc)
 target_link_libraries(actorplugin_ros ${GAZEBO_LIBRARIES}  ${roscpp_LIBRARIES} ${tf_LIBRARIES})
 # set_target_properties(actorplugin_ros PROPERTIES
