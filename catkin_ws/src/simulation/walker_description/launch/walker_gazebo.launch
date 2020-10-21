@@ -22,7 +22,7 @@
     </include>
 
     <!-- Run a python script to the send a service call to gazebo_ros to spawn a URDF robot -->
-    <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+    <node name="urdf_spawner" pkg="walker_description" type="spawn_model_py3" respawn="false" output="screen"
         args="-urdf -model active_walker -param robot_description" />
 
 
