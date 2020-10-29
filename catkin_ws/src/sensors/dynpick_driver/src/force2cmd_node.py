@@ -59,7 +59,7 @@ class Force2CmdNode(object):
         # angular_velocity = (torque_z / MOMENT_OF_INERTIA * dt + self.last_angular_velocity) / (1 + DAMPING_THETA / MOMENT_OF_INERTIA * dt)
         
         linear_velocity = (force_y / 15.145 * dt + self.last_linear_velocity) / (15.145 + (-151.03) * dt)
-        angular_velocity = (torque_z / MOMENT_OF_INERTIA * dt + self.last_angular_velocity) / (1 + DAMPING_THETA / MOMENT_OF_INERTIA * dt)
+        angular_velocity = (torque_z / 1.1801 * dt + self.last_angular_velocity) / (15.145 + (-7.975) * dt)
         
         # linear_velocity = self.last_linear_velocity * 0.9087 * 0.7 + force_y * 0.0028 * 1.5
         # angular_velocity = self.last_angular_velocity * 0.9028 * 0.5 + torque_z * 0.0051 * 7.5
