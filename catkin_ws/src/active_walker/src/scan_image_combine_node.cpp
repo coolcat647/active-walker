@@ -141,7 +141,7 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     string yolo_srv_name = "yolov4_node/yolo_detect";
     ros::param::param<string>("~scan_topic", scan_topic, "scan");
     ros::param::param<string>("~img_topic", img_topic, "usb_cam/image_raw"); 
-    ros::param::param<string>("~caminfo_topic", caminfo_topic, "/usb_cam/camera_info"); 
+    ros::param::param<string>("~caminfo_topic", caminfo_topic, "usb_cam/camera_info"); 
 
     // ROS publisher & subscriber & message filter
     pub_combined_image_ = nh_.advertise<sensor_msgs::Image>("debug_reprojection", 1);
@@ -161,12 +161,22 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     }
     yolov4_detect_ = nh_.serviceClient<walker_msgs::Detection2DTrigger>(yolo_srv_name);
 
+
+    // To get the image frame information from an image topic
+    string image_frame;
+    boost::shared_ptr<sensor_msgs::Image const> tmp_img_ptr;
+    tmp_img_ptr = ros::topic::waitForMessage<sensor_msgs::Image>(img_topic, ros::Duration(5.0));
+    image_frame = tmp_img_ptr->header.frame_id;
+    ROS_INFO("Image topic frame_id: %s", image_frame.c_str());
+    tmp_img_ptr.reset();
+
+
     // Prepare extrinsic matrix
     tf::StampedTransform stamped_transform;
     try{
-        tf_listener_.waitForTransform("camera_link", "laser_link",
+        tf_listener_.waitForTransform(image_frame, "laser_link",
                                     ros::Time(0), ros::Duration(10.0));
-        tf_listener_.lookupTransform("camera_link", "laser_link", 
+        tf_listener_.lookupTransform(image_frame, "laser_link", 
                                     ros::Time(0), stamped_transform);
     }
     catch (tf::TransformException ex){

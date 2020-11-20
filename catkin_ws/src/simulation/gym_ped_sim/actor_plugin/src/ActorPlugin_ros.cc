@@ -309,7 +309,7 @@ void ActorPlugin::OnUpdate(const common::UpdateInfo &_info)
     {
         ignition::math::Vector3d temp = this->start_location;
         this->start_location = this->target;
-        // this->target = temp;
+        this->target = temp;
         // this->target += ignition::math::Vector3d(ignition::math::Rand::DblUniform(-2, 2),
         //                                         ignition::math::Rand::DblUniform(-2, 2),
         //                                         0.0);

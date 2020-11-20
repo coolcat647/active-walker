@@ -223,7 +223,8 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://walker_description/meshes/front_caster_wheel_link.STL" />
+                <!-- <mesh filename="package://walker_description/meshes/front_caster_wheel_link.STL" /> -->
+                <sphere radius="${front_wheel_radius + 0.03}"/>
             </geometry>
             <material name="">
                 <color rgba="0.75294 0.75294 0.75294 1" />
@@ -232,7 +233,8 @@
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://walker_description/meshes/front_caster_wheel_link.STL" />
+                <!-- <mesh filename="package://walker_description/meshes/front_caster_wheel_link.STL" /> -->
+                <sphere radius="${front_wheel_radius + 0.03}"/>
             </geometry>
         </collision>
     </link>
@@ -254,7 +256,8 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://walker_description/meshes/front_caster_wheel_link.STL" />
+                <!-- <mesh filename="package://walker_description/meshes/front_caster_wheel_link.STL" /> -->
+                <sphere radius="${front_wheel_radius + 0.03}"/>
             </geometry>
             <material name="">
                 <color rgba="0.75294 0.75294 0.75294 1" />
@@ -263,7 +266,8 @@
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://walker_description/meshes/front_caster_wheel_link.STL" />
+                <!-- <mesh filename="package://walker_description/meshes/front_caster_wheel_link.STL" /> -->
+                <sphere radius="${front_wheel_radius + 0.03}"/>
             </geometry>
         </collision>
     </link>
