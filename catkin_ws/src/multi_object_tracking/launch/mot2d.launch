@@ -1,12 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
-    <!-- Yolo v4 detection -->
-    <node name="yolov4_node" pkg="yolov4_pytorch" type="detection_node.py" required="true" /> 
 
-    <!-- Combine laserscan and image detection result -->
-    <node name="scan_image_combine_node" pkg="active_walker" type="scan_image_combine_node" required="true" output="screen" />
+    <arg name="robot_namespace" default="active_walker" />
+    <arg name="use_tiny_model" default="true" />
 
-    <!-- Multi-Object Tracking onde -->
-    <node name="mot2d_node" pkg="multi_object_tracking" type="mot2d_node.py" required="true" output="screen" />
+    <group ns="$(arg robot_namespace)">
+        <!-- Yolo v4 detection -->
+        <node name="yolov4_node" pkg="yolov4_pytorch" type="detection_node.py" required="true">
+            <param name="use_tiny_model" type="bool" value="$(arg use_tiny_model)" />
+        </node>
+
+        <!-- Combine laserscan and image detection result -->
+        <node name="scan_image_combine_node" pkg="active_walker" type="scan_image_combine_node" required="true" output="screen" />
+
+        <!-- Multi-Object Tracking onde -->
+        <node name="mot2d_node" pkg="multi_object_tracking" type="mot2d_node.py" required="true" output="screen" />
+    </group>
 
 </launch>

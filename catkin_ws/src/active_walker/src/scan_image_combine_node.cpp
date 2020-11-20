@@ -53,8 +53,6 @@
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl_ros/transforms.h>
 
-using namespace std;
-using namespace cv;
 
 typedef message_filters::sync_policies::ApproximateTime<cv_bridge::CvImage, sensor_msgs::LaserScan> MySyncPolicy;
 typedef message_filters::Synchronizer<MySyncPolicy> MySynchronizer;
@@ -65,13 +63,13 @@ typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloudXYZRGB;
 typedef pcl::PointCloud<pcl::PointXYZRGB>::Ptr PointCloudXYZRGBPtr;
 
 // Just for color words display
-static const string COLOR_RED = "\e[0;31m";
-static const string COLOR_GREEN = "\e[0;32m";
-static const string COLOR_YELLOW = "\e[0;33m"; 
-static const string COLOR_NC = "\e[0m";
+static const std::string COLOR_RED = "\e[0;31m";
+static const std::string COLOR_GREEN = "\e[0;32m";
+static const std::string COLOR_YELLOW = "\e[0;33m"; 
+static const std::string COLOR_NC = "\e[0m";
 
 static const int kNumOfInterestClass = 1;
-static const string kInterestClassNames[kNumOfInterestClass] = {"person"};
+static const std::string kInterestClassNames[kNumOfInterestClass] = {"person"};
 
 template <typename T, typename A>
 int arg_max(std::vector<T, A> const& vec) {
@@ -89,7 +87,7 @@ public:
         cloud = PointCloudXYZPtr(new PointCloudXYZ);
         radius = 0.0;
     }
-    walker_msgs::BBox2D box;
+    walker_msgs::BBox2D box;        // id, class_name, score, center, size_x, size_y
     PointCloudXYZPtr cloud;
     geometry_msgs::Point location;
     double radius;
@@ -102,7 +100,7 @@ public:
     ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle pnh);
     void img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_ptr, const sensor_msgs::LaserScan::ConstPtr &laser_msg_ptr);
     void separate_outlier_points(PointCloudXYZPtr cloud_in, PointCloudXYZPtr cloud_out, bool is_far);
-    bool is_interest_class(string class_name);
+    bool is_interest_class(std::string class_name);
     tf::Vector3 point_pixel2laser(double pixel_x, double pixel_y, double depth_from_laser);
     cv::Point2d point_laser2pixel(double x_from_laser, double y_from_laser, double z_from_laser);
 
@@ -133,15 +131,19 @@ public:
 };
 
 
+//    __   __        __  ___  __        __  ___  __   __  
+//   /  ` /  \ |\ | /__`  |  |__) |  | /  `  |  /  \ |__) 
+//   \__, \__/ | \| .__/  |  |  \ \__/ \__,  |  \__/ |  \ 
+//  
 ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle pnh): nh_(nh), pnh_(pnh) {
     // ROS parameters
-    string scan_topic;
-    string img_topic;
-    string caminfo_topic;
-    string yolo_srv_name = "yolov4_node/yolo_detect";
-    ros::param::param<string>("~scan_topic", scan_topic, "scan");
-    ros::param::param<string>("~img_topic", img_topic, "usb_cam/image_raw"); 
-    ros::param::param<string>("~caminfo_topic", caminfo_topic, "usb_cam/camera_info"); 
+    std::string scan_topic;
+    std::string img_topic;
+    std::string caminfo_topic;
+    std::string yolo_srv_name = "yolov4_node/yolo_detect";
+    ros::param::param<std::string>("~scan_topic", scan_topic, "scan");
+    ros::param::param<std::string>("~img_topic", img_topic, "usb_cam/image_raw"); 
+    ros::param::param<std::string>("~caminfo_topic", caminfo_topic, "usb_cam/camera_info"); 
 
     // ROS publisher & subscriber & message filter
     pub_combined_image_ = nh_.advertise<sensor_msgs::Image>("debug_reprojection", 1);
@@ -161,15 +163,13 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     }
     yolov4_detect_ = nh_.serviceClient<walker_msgs::Detection2DTrigger>(yolo_srv_name);
 
-
-    // To get the image frame information from an image topic
-    string image_frame;
+    // To get the image frame_id from an image topic
+    std::string image_frame;
     boost::shared_ptr<sensor_msgs::Image const> tmp_img_ptr;
     tmp_img_ptr = ros::topic::waitForMessage<sensor_msgs::Image>(img_topic, ros::Duration(5.0));
     image_frame = tmp_img_ptr->header.frame_id;
     ROS_INFO("Image topic frame_id: %s", image_frame.c_str());
     tmp_img_ptr.reset();
-
 
     // Prepare extrinsic matrix
     tf::StampedTransform stamped_transform;
@@ -207,7 +207,7 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
         p1 = caminfo_ptr->D[2];
         p2 = caminfo_ptr->D[3];
     }else {
-        ROS_INFO_STREAM("No camera_info received, use default values");
+        ROS_WARN_STREAM("No camera_info received, use default values");
         fx = 518.34283;
         fy = 522.27271;
         cx = 305.42936;
@@ -218,12 +218,12 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
         p1 = -0.003933;
         p2 = -0.005683;
     }
-    K_ = (Mat_<double>(3, 3) << fx, 0., cx, 0., fy, cy, 0., 0., 1.);
-    D_ = (Mat_<double>(5, 1) << k1, k2, p1, p2, 0.0);
+    K_ = (cv::Mat_<double>(3, 3) << fx, 0., cx, 0., fy, cy, 0., 0., 1.);
+    D_ = (cv::Mat_<double>(5, 1) << k1, k2, p1, p2, 0.0);
     // cout << "K:\n" << K_ << endl;
     // cout << "D:\n" << D_ << endl;
 
-    cout << COLOR_GREEN << ros::this_node::getName() << " is ready." << COLOR_NC << endl;
+    ROS_INFO_STREAM(COLOR_GREEN << ros::this_node::getName() << " is ready." << COLOR_NC);
 }
 
 
@@ -285,7 +285,7 @@ void ScanImageCombineNode::separate_outlier_points(PointCloudXYZPtr cloud_in, Po
 }
 
 
-bool ScanImageCombineNode::is_interest_class(string class_name){
+bool ScanImageCombineNode::is_interest_class(std::string class_name){
     for(int i = 0; i < kNumOfInterestClass; i++) {
         if(strcmp(class_name.c_str(), kInterestClassNames[i].c_str()) == 0)
             return true;
@@ -295,7 +295,7 @@ bool ScanImageCombineNode::is_interest_class(string class_name){
 
 
 tf::Vector3 ScanImageCombineNode::point_pixel2laser(double pixel_x, double pixel_y, double depth_from_laser) {
-    cv::Mat cv_pt = (Mat_<double>(3, 1) << pixel_x, pixel_y, 1.0);
+    cv::Mat cv_pt = (cv::Mat_<double>(3, 1) << pixel_x, pixel_y, 1.0);
     
     // Transform to camera frame
     cv::Mat pt_camframe = K_.inv() * cv_pt * depth_from_laser;
@@ -333,7 +333,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     obj_list.clear();
     visualization_msgs::MarkerArray marker_array;
 
-    // 2D bounding box detection service
+    // Call 2D bounding box detection service
     walker_msgs::Detection2DTrigger srv;
     srv.request.image = *(cv_ptr->toImageMsg());
     if(!yolov4_detect_.call(srv)){
@@ -349,25 +349,25 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             obj_info.box = boxes[i];
 
             // Skip the box which is too small
-            if(obj_info.box.size_x < 50 ){   // Experimental test value
-                ROS_WARN("Box size is too small: %.0fx%.0f at image location(%.0f, %.0f)", 
-                                                                    obj_info.box.size_x, 
-                                                                    obj_info.box.size_y,
-                                                                    obj_info.box.center.x,
-                                                                    obj_info.box.center.y);
-                continue;
-            }
+            // if(obj_info.box.size_x < 50 ){   // Experimental test value
+            //     ROS_WARN("Box size is too small: %.0fx%.0f at image location(%.0f, %.0f)", 
+            //                                                         obj_info.box.size_x, 
+            //                                                         obj_info.box.size_y,
+            //                                                         obj_info.box.center.x,
+            //                                                         obj_info.box.center.y);
+            //     continue;
+            // }
 
             // Skip the boxes which are too closed
-            bool flag_too_closed = false;
-            for(int j = 0; j < obj_list.size(); j++) {
-                if(fabs(obj_info.box.center.x - obj_list[j].box.center.x) < 50) {
-                    ROS_WARN("Boxes are is too closed: %.0f", fabs(obj_info.box.center.x - obj_list[j].box.center.x));
-                    flag_too_closed = true;
-                    break;
-                }
-            }
-            if(flag_too_closed) continue;
+            // bool flag_too_closed = false;
+            // for(int j = 0; j < obj_list.size(); j++) {
+            //     if(fabs(obj_info.box.center.x - obj_list[j].box.center.x) < 50) {
+            //         ROS_WARN("Boxes are is too closed: %.0f", fabs(obj_info.box.center.x - obj_list[j].box.center.x));
+            //         flag_too_closed = true;
+            //         break;
+            //     }
+            // }
+            // if(flag_too_closed) continue;
 
             obj_list.push_back(obj_info);
         }
@@ -383,6 +383,26 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     PointCloudXYZPtr cloud_raw(new PointCloudXYZ);
     projector_.projectLaser(*laser_msg_ptr, cloud_msg);
     pcl::fromROSMsg(cloud_msg, *cloud_raw);
+
+
+    // TEST 20201119 start
+    // pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
+    // tree->setInputCloud(cloud_raw);
+    // std::vector<pcl::PointIndices> cluster_indices;
+    // pcl::EuclideanClusterExtraction<pcl::PointXYZ> extractor;
+    // extractor.setClusterTolerance(0.4);
+    // extractor.setMinClusterSize(2);
+    // extractor.setMaxClusterSize(1000);  // need to check the max pointcloud size of each object
+    // extractor.setSearchMethod(tree);
+    // extractor.setInputCloud(cloud_raw);
+    // extractor.extract(cluster_indices);
+
+
+    // return;
+
+
+    // TEST 20201119 end
+
     
     // Color pointcloud to visaulize detected points
     PointCloudXYZRGBPtr cloud_colored(new PointCloudXYZRGB);
@@ -519,7 +539,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     if(pub_combined_image_.getNumSubscribers() > 0){
         // Draw points in images
         for (int j = 0; j < pts_uv.size(); ++j)
-            cv::circle(cvimage, pts_uv[j], 1, Scalar(0, 255, 0), 1);
+            cv::circle(cvimage, pts_uv[j], 1, cv::  Scalar(0, 255, 0), 1);
         cv_bridge::CvImage result_image(cv_ptr->header, "rgb8", cvimage);
         pub_combined_image_.publish(result_image.toImageMsg());
     }
@@ -534,15 +554,20 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
 
     // Show object infomation
     if(obj_list.size() > 0){
-        cout << "Prediction result:" << endl;
+        std::cout << "Prediction result:" << std::endl;
         for(int i = 0; i < obj_list.size(); i++) {
-            cout << obj_list[i].box.class_name << ", cloud size: " << obj_list[i].cloud->points.size() << endl; 
+            std::cout << obj_list[i].box.class_name << ", cloud size: " << obj_list[i].cloud->points.size() << std::endl; 
         }
-        cout << "\n===================" << endl;
+        std::cout << "\n===================" << std::endl;
     }
 }
 
 
+
+//            
+//   |\/|  /\  | |\ | 
+//   |  | /~~\ | | \| 
+//  
 int main(int argc, char **argv) {
     ros::init(argc, argv, "scan_clustering_node");
     ros::NodeHandle nh, pnh("~");

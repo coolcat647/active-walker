@@ -209,6 +209,14 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /active_walker/obj_marker
+      Name: MarkerArray
+      Namespaces:
+        detection_result: true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 244; 244; 244
@@ -237,7 +245,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 11.072193145751953
+      Distance: 27.41434097290039
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
