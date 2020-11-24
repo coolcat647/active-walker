@@ -73,6 +73,10 @@ static const std::string COLOR_NC = "\e[0m";
 
 static const int kNumOfInterestClass = 1;
 static const std::string kInterestClassNames[kNumOfInterestClass] = {"person"};
+static const double kMaxDimOfLaserCluster = 1.2;   // Consider the cluster would be merged if two people are too close
+static const double kThresholdOfSimilarity = 0.95;
+static const double kThresholdOfUnreasonableHeight = 3.0;
+static const double kLifetimeOfMarker = 0.2;
 
 template <typename T, typename A>
 int arg_max(std::vector<T, A> const& vec) {
@@ -92,10 +96,10 @@ public:
     }
     walker_msgs::BBox2D box;        // id, class_name, score, center, size_x, size_y
     PointCloudXYZPtr cloud;
+
     geometry_msgs::Point location;
     geometry_msgs::Vector3 key_vector;
     double radius;
-    // geometry_msgs::Point dimension;
 };
 
 
@@ -107,10 +111,10 @@ public:
     }
     PointCloudXYZPtr cloud;
     bool is_in_fov;
-    double size_3d;
-    geometry_msgs::Point location;
-    geometry_msgs::Vector3 key_vector;
-    
+    double dimension_2d;                        // sqrt(W^2 + L^2)
+    geometry_msgs::Point location;              // Center of cluster
+    geometry_msgs::Vector3 key_vec_imgspace;
+    // geometry_msgs::Vector3 key_vec_laserspace;       // deprecated
 };
 
 
@@ -130,6 +134,11 @@ public:
     tf::Vector3 tras_laser2cam_;
     tf::Matrix3x3 rot_cam2laser_;
     tf::Vector3 tras_cam2laser_;
+
+    // Elevation angle for object height recovering
+    double camera_mount_elevation_angle_;
+
+    // Camera distortion coefficients
     cv::Mat K_;
     cv::Mat D_;
 
@@ -139,7 +148,7 @@ public:
     laser_geometry::LaserProjection projector_;
     ros::Publisher pub_combined_image_;
     ros::Publisher pub_marker_array_;
-    // ros::Publisher pub_debug_mrk_array_;
+    ros::Publisher pub_debug_mrk_array_;
     ros::Publisher pub_colored_pc_;
     ros::Publisher pub_detection3d_;
     ros::ServiceClient yolov4_detect_;  // ROS Service client
@@ -170,7 +179,7 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     // ROS publisher & subscriber & message filter
     pub_combined_image_ = nh_.advertise<sensor_msgs::Image>("debug_reprojection", 1);
     pub_marker_array_ = nh.advertise<visualization_msgs::MarkerArray>("obj_marker", 1);
-    // pub_debug_mrk_array_ = nh.advertise<visualization_msgs::MarkerArray>("debug_marker", 1);
+    pub_debug_mrk_array_ = nh.advertise<visualization_msgs::MarkerArray>("debug_marker", 1);
     pub_colored_pc_ = nh.advertise<sensor_msgs::PointCloud2>("colored_pc", 1);
     pub_detection3d_ = nh.advertise<walker_msgs::Det3DArray>("det3d_result", 1);
     scan_sub_.subscribe(nh_, scan_topic, 1);
@@ -189,9 +198,16 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     // To get the image frame_id from an image topic
     std::string image_frame;
     boost::shared_ptr<sensor_msgs::Image const> tmp_img_ptr;
+    ROS_INFO_STREAM("[" << ros::this_node::getName() << "] Wait for a image message in 5 seconds");
     tmp_img_ptr = ros::topic::waitForMessage<sensor_msgs::Image>(img_topic, ros::Duration(5.0));
-    image_frame = tmp_img_ptr->header.frame_id;
-    ROS_INFO("Image topic frame_id: %s", image_frame.c_str());
+    if(tmp_img_ptr != NULL){
+        image_frame = tmp_img_ptr->header.frame_id;
+        ROS_INFO("Image topic frame_id: %s", image_frame.c_str());
+    }
+    else{
+        image_frame = "camera_link";
+        ROS_WARN("Cannot get any image topic, set default image frame_id: %s", image_frame.c_str());
+    }
     tmp_img_ptr.reset();
 
     // Prepare extrinsic matrix
@@ -213,11 +229,16 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     rot_cam2laser_ = rot_laser2cam_.transpose();
     tras_cam2laser_ = rot_cam2laser_ * tras_laser2cam_ * (-1);
 
+    // 
+    double tmp_roll, tmp_pitch, tmp_yaw;
+    rot_laser2cam_.getRPY(tmp_roll, tmp_pitch, tmp_yaw);
+    camera_mount_elevation_angle_ = 90.0 - std::fabs(tmp_pitch);
+
     // Prepare intrinsic matrix
     boost::shared_ptr<sensor_msgs::CameraInfo const> caminfo_ptr;
     double fx, fy, cx, cy;
     double k1, k2, p1, p2;
-    ROS_INFO_STREAM("Wait for camera_info message in 10 seconds");
+    ROS_INFO_STREAM("[" << ros::this_node::getName() << "] Wait for a camera_info message in 10 seconds");
     caminfo_ptr = ros::topic::waitForMessage<sensor_msgs::CameraInfo>(caminfo_topic, ros::Duration(10.0));
     if(caminfo_ptr != NULL){       
         fx = caminfo_ptr->P[0];
@@ -230,7 +251,7 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
         p1 = caminfo_ptr->D[2];
         p2 = caminfo_ptr->D[3];
     }else {
-        ROS_WARN_STREAM("No camera_info received, use default values");
+        ROS_WARN_STREAM("[" << ros::this_node::getName() << "] No camera_info received, use default values");
         fx = 518.34283;
         fy = 522.27271;
         cx = 305.42936;
@@ -251,7 +272,7 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
 
 
 double ScanImageCombineNode::calculate_distance_cost(geometry_msgs::Point location) {
-    return std::floor(std::hypot(location.x, location.y) / 4.0);
+    return std::floor(std::hypot(location.x, location.y) / 2.0);
 }
 
 
@@ -371,8 +392,11 @@ cv::Point2d ScanImageCombineNode::point_laser2pixel(double x_from_laser, double 
 void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_ptr, const sensor_msgs::LaserScan::ConstPtr &laser_msg_ptr){
     // Object list init
     obj_list.clear();
+    // Visualization msg
     visualization_msgs::MarkerArray marker_array;
     visualization_msgs::MarkerArray debug_mrk_array;
+    // Detection result message
+    walker_msgs::Det3DArray detection_array;
 
     // Call 2D bounding box detection service
     walker_msgs::Detection2DTrigger srv;
@@ -382,10 +406,11 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
         return;
     }
     
-    double image_width = cv_ptr->image.cols;
-    double image_height = cv_ptr->image.rows;
+    double kImageWidth = cv_ptr->image.cols;
+    double kImageHeight = cv_ptr->image.rows;
 
     // Collect all interest classes to obj_list
+    // char det_str[200] = {0};
     std::vector<walker_msgs::BBox2D> boxes = srv.response.result.boxes;
     for(int i = 0; i < boxes.size(); i++) {
         if(is_interest_class(boxes[i].class_name)) {
@@ -393,13 +418,14 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             obj_info.box = boxes[i];
 
             // Prepare key vector for linear assignment later
-            obj_info.key_vector.x = boxes[i].center.x - image_width / 2;
-            obj_info.key_vector.y = -(boxes[i].center.y - image_height);
-            // ROS_INFO("atan2:%.2f", std::atan2(obj_info.key_vector.y, obj_info.key_vector.x) / M_PI * 180.0);
-
+            obj_info.key_vector.x = boxes[i].center.x - kImageWidth / 2;
+            obj_info.key_vector.y = -(boxes[i].center.y - kImageHeight);
             obj_list.push_back(obj_info);
+
+            // sprintf(det_str, "%s%.2f, ", det_str, std::atan2(obj_info.key_vector.y, obj_info.key_vector.x) / M_PI * 180.0);
         }
     }
+    // ROS_INFO("%s", det_str);
 
     // Reconstruct undistorted cvimage from detection result image
     cv::Mat cvimage;
@@ -420,7 +446,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     std::vector<int> roi_pts_indices;
     for (int i = 0; i < cloud_raw->points.size(); ++i) {
         cv::Point2d pt_uv = point_laser2pixel(cloud_raw->points[i].x, cloud_raw->points[i].y, cloud_raw->points[i].z); 
-        if(pt_uv.x < 0 || pt_uv.y < 0 || pt_uv.x > image_width || pt_uv.y > image_height)
+        if(pt_uv.x < 0 || pt_uv.y < 0 || pt_uv.x > kImageWidth || pt_uv.y > kImageHeight)
             continue;
         pts_uv.push_back(pt_uv);
         roi_pts_indices.push_back(i);       
@@ -431,7 +457,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     tree->setInputCloud(cloud_raw);
     std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<pcl::PointXYZ> extractor;
-    extractor.setClusterTolerance(0.4);     // normal pedestrian dimension
+    extractor.setClusterTolerance(0.3);     // normal pedestrian dimension
     extractor.setMinClusterSize(2);
     extractor.setMaxClusterSize(1000);      // need to check the max pointcloud size of each object
     extractor.setSearchMethod(tree);
@@ -456,100 +482,110 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
         center = (min_point.getVector3fMap() + max_point.getVector3fMap()) / 2.0;
         laser_cluster.location.x = center[0];
         laser_cluster.location.y = center[1];
-        laser_cluster.size_3d = std::hypot(min_point.x - max_point.x, min_point.y - max_point.y);
-        laser_cluster.key_vector.x = center[1];
-        laser_cluster.key_vector.y = -center[0];
+        laser_cluster.dimension_2d = std::hypot(min_point.x - max_point.x, min_point.y - max_point.y);
+        // laser_cluster.key_vec_laserspace.x = center[1];          // deprecated
+        // laser_cluster.key_vec_laserspace.y = -center[0];         // deprecated
 
         // Ignore too large cloud, it is guessed as background
-        if(laser_cluster.cloud->points.size() > 50 || laser_cluster.size_3d > 2.0)
+        if(laser_cluster.dimension_2d > kMaxDimOfLaserCluster)
             laser_cluster.is_in_fov = false;
 
         if(laser_cluster.is_in_fov == true) {
 
+            // test20201124
+            cv::Point2d pt_uv2 = point_laser2pixel(laser_cluster.location.x, laser_cluster.location.y, 0.0);
+            laser_cluster.key_vec_imgspace.x = pt_uv2.x - kImageWidth / 2;
+            laser_cluster.key_vec_imgspace.y = -(pt_uv2.y - kImageHeight);
+            // pts_uv2_list.push_back(pt_uv2);
+
             laser_clusters_list.push_back(laser_cluster);
 
             // Visualization 
-            // visualization_msgs::Marker marker;
-            // marker.header.frame_id = laser_msg_ptr->header.frame_id;
-            // marker.header.stamp = ros::Time();
-            // marker.ns = "debug1";
-            // marker.id = it - cluster_indices.begin();
-            // marker.type = visualization_msgs::Marker::LINE_STRIP;
-            // marker.lifetime = ros::Duration(0.2);
-            // marker.action = visualization_msgs::Marker::ADD;
-            // geometry_msgs::Point tmp_pt;
-            // tmp_pt.x = min_point.x;
-            // tmp_pt.y = min_point.y;
-            // marker.points.push_back(tmp_pt);
-            // tmp_pt.x = max_point.x;
-            // tmp_pt.y = max_point.y;
-            // marker.points.push_back(tmp_pt);
-            // marker.scale.x = 0.1;
-            // marker.pose.orientation.x = 0.0;
-            // marker.pose.orientation.y = 0.0;
-            // marker.pose.orientation.z = 0.0;
-            // marker.pose.orientation.w = 1.0;
-            // marker.color.a = 0.5;
-            // marker.color.r = 1.0;
-            // marker.color.b = 1.0;
-            // debug_mrk_array.markers.push_back(marker);
+            visualization_msgs::Marker marker;
+            marker.header.frame_id = laser_msg_ptr->header.frame_id;
+            marker.header.stamp = ros::Time();
+            marker.ns = "debug1";
+            marker.id = it - cluster_indices.begin();
+            marker.type = visualization_msgs::Marker::LINE_STRIP;
+            marker.lifetime = ros::Duration(kLifetimeOfMarker);
+            marker.action = visualization_msgs::Marker::ADD;
+            geometry_msgs::Point tmp_pt;
+            tmp_pt.x = min_point.x;
+            tmp_pt.y = min_point.y;
+            marker.points.push_back(tmp_pt);
+            tmp_pt.x = max_point.x;
+            tmp_pt.y = max_point.y;
+            marker.points.push_back(tmp_pt);
+            marker.scale.x = 0.1;
+            marker.pose.orientation.x = 0.0;
+            marker.pose.orientation.y = 0.0;
+            marker.pose.orientation.z = 0.0;
+            marker.pose.orientation.w = 1.0;
+            marker.color.a = 0.5;
+            marker.color.r = 1.0;
+            marker.color.b = 1.0;
+            debug_mrk_array.markers.push_back(marker);
 
-            // visualization_msgs::Marker marker2;
-            // marker2.header.frame_id = laser_msg_ptr->header.frame_id;
-            // marker2.header.stamp = ros::Time();
-            // marker2.ns = "debug2";
-            // marker2.id = it - cluster_indices.begin();
-            // marker2.type = visualization_msgs::Marker::SPHERE;
-            // marker2.lifetime = ros::Duration(0.2);
-            // marker2.action = visualization_msgs::Marker::ADD;
-            // marker2.scale.x = 0.5;
-            // marker2.scale.y = 0.5;
-            // marker2.scale.z = 0.5;
-            // marker2.pose.position.x = center[0];
-            // marker2.pose.position.y = center[1];
-            // marker2.pose.orientation.x = 0.0;
-            // marker2.pose.orientation.y = 0.0;
-            // marker2.pose.orientation.z = 0.0;
-            // marker2.pose.orientation.w = 1.0;
-            // marker2.color.a = 0.5;
-            // marker2.color.b = 1.0;
-            // debug_mrk_array.markers.push_back(marker2);
+            visualization_msgs::Marker marker2;
+            marker2.header.frame_id = laser_msg_ptr->header.frame_id;
+            marker2.header.stamp = ros::Time();
+            marker2.ns = "debug2";
+            marker2.id = it - cluster_indices.begin();
+            marker2.type = visualization_msgs::Marker::SPHERE;
+            marker2.lifetime = ros::Duration(kLifetimeOfMarker);
+            marker2.action = visualization_msgs::Marker::ADD;
+            marker2.scale.x = 0.5;
+            marker2.scale.y = 0.5;
+            marker2.scale.z = 0.5;
+            marker2.pose.position.x = center[0];
+            marker2.pose.position.y = center[1];
+            marker2.pose.orientation.x = 0.0;
+            marker2.pose.orientation.y = 0.0;
+            marker2.pose.orientation.z = 0.0;
+            marker2.pose.orientation.w = 1.0;
+            marker2.color.a = 0.5;
+            marker2.color.b = 1.0;
+            debug_mrk_array.markers.push_back(marker2);
 
-            // visualization_msgs::Marker marker3;
-            // marker3.header.frame_id = laser_msg_ptr->header.frame_id;
-            // marker3.header.stamp = ros::Time();
-            // marker3.ns = "debug3";
-            // marker3.id = it - cluster_indices.begin();
-            // marker3.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
-            // marker3.lifetime = ros::Duration(0.2);
-            // marker3.action = visualization_msgs::Marker::ADD;
-            // marker3.scale.x = 0.5;
-            // marker3.pose.position.x = center[0];
-            // marker3.pose.position.y = center[1];
-            // marker3.pose.orientation.x = 0.0;
-            // marker3.pose.orientation.y = 0.0;
-            // marker3.pose.orientation.z = 0.0;
-            // marker3.pose.orientation.w = 1.0;
-            // marker3.color.a = 0.5;
-            // marker3.color.r = 1.0;
-            // marker3.text = std::to_string(std::atan2(laser_cluster.key_vector.y, laser_cluster.key_vector.x) / M_PI * 180.0);
-            // debug_mrk_array.markers.push_back(marker3);
+            visualization_msgs::Marker marker3;
+            marker3.header.frame_id = laser_msg_ptr->header.frame_id;
+            marker3.header.stamp = ros::Time();
+            marker3.ns = "debug3";
+            marker3.id = it - cluster_indices.begin();
+            marker3.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+            marker3.lifetime = ros::Duration(kLifetimeOfMarker);
+            marker3.action = visualization_msgs::Marker::ADD;
+            marker3.scale.z = 0.5;
+            marker3.pose.position.x = center[0];
+            marker3.pose.position.y = center[1];
+            marker3.pose.position.z = 1.0;
+            marker3.pose.orientation.x = 0.0;
+            marker3.pose.orientation.y = 0.0;
+            marker3.pose.orientation.z = 0.0;
+            marker3.pose.orientation.w = 1.0;
+            marker3.color.a = 1.0;
+            marker3.color.r = 1.0;
+            marker3.color.g = 1.0;
+            marker3.text = std::to_string(laser_cluster.dimension_2d);
+            // marker3.text = std::to_string(std::atan2(laser_cluster.key_vec_imgspace.y, laser_cluster.key_vec_imgspace.x) / M_PI * 180.0);
+            debug_mrk_array.markers.push_back(marker3);
         }
     }
-    // pub_debug_mrk_array_.publish(debug_mrk_array);
+    pub_debug_mrk_array_.publish(debug_mrk_array);
 
-    // Detection result message
-    walker_msgs::Det3DArray detection_array;
+    
 
-    // For linear assignment
+    // Prepare cost matrix for linear assignment
     if(obj_list.size() != 0 && laser_clusters_list.size() != 0) {
         std::vector< std::vector<double> > cost_matrix(obj_list.size(), std::vector<double>(laser_clusters_list.size(), 0.0));
         for(int i = 0; i < obj_list.size(); i++){
             for(int j = 0; j < laser_clusters_list.size(); j++){
-                double similarity = cosine_similarity_2d(obj_list[i].key_vector, laser_clusters_list[j].key_vector);
-                // similarity = (similarity > 0.5)? similarity : 0.0; 
-                cost_matrix[i][j] = 1.0 - similarity \
-                                        + calculate_distance_cost(laser_clusters_list[j].location);
+                // Consider the distance 
+                double distance_cost = calculate_distance_cost(laser_clusters_list[j].location);
+                
+                double similarity = cosine_similarity_2d(obj_list[i].key_vector, laser_clusters_list[j].key_vec_imgspace);
+                double orientation_cost = (similarity >= kThresholdOfSimilarity)? 1.0 - similarity : 100.0; 
+                cost_matrix[i][j] = distance_cost + orientation_cost;
             }
         }
 
@@ -558,7 +594,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
         vector<int> assignment;
         double cost = HungAlgo.Solve(cost_matrix, assignment);
         for (unsigned int i = 0; i < cost_matrix.size(); i++){
-            if(assignment[i] != -1)     // -1 means there is no assignment solution for this item 
+            if(assignment[i] != -1 && cost_matrix[i][assignment[i]] < 100)     // -1 means there is no assignment solution for this item 
                 obj_list[i].cloud = laser_clusters_list[assignment[i]].cloud;
         }
 
@@ -595,8 +631,8 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
                 //                                                     obj_list[i].location.x);
                 double radius_from_image = fabs(lefttop_laserframe.getY() - righttop_laserframe.getY()) / 2;
 
-                // Skip the match result which has an unreasonable height 
-                if(h_from_image > 2.5) continue;
+                // Skip the match result which has an unreasonable height
+                if(h_from_image > kThresholdOfUnreasonableHeight) continue;
 
                 // Pack the custom ros package
                 walker_msgs::Det3D det_msg;
@@ -620,12 +656,12 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
                 marker.ns = "detection_result";
                 marker.id = i;
                 marker.type = visualization_msgs::Marker::CUBE;
-                marker.lifetime = ros::Duration(0.2);
+                marker.lifetime = ros::Duration(kLifetimeOfMarker);
                 // marker.lifetime = ros::Duration(10.0);
                 marker.action = visualization_msgs::Marker::ADD;
                 marker.pose.position.x = obj_list[i].location.x;
                 marker.pose.position.y = obj_list[i].location.y;
-                marker.pose.position.z = 0;
+                marker.pose.position.z = rightbottom_laserframe.getZ() * std::cos(camera_mount_elevation_angle_);
                 marker.pose.orientation.x = 0.0;
                 marker.pose.orientation.y = 0.0;
                 marker.pose.orientation.z = 0.0;
@@ -634,7 +670,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
                 marker.scale.x = w_from_image;
                 marker.scale.y = w_from_image;
                 marker.scale.z = h_from_image;
-                marker.color.a = 0.2;
+                marker.color.a = 0.4;
                 marker.color.g = 1.0;
                 marker_array.markers.push_back(marker);
             }
@@ -654,6 +690,10 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
         // Draw points in images
         for (int j = 0; j < pts_uv.size(); ++j)
             cv::circle(cvimage, pts_uv[j], 2, cv::Scalar(0, 255, 0), -1);
+
+        // for (int j = 0; j < pts_uv2_list.size(); ++j)
+        //     cv::circle(cvimage, pts_uv2_list[j], 5, cv::Scalar(255, 0, 0), -1);
+
         cv_bridge::CvImage result_image(cv_ptr->header, "rgb8", cvimage);
         pub_combined_image_.publish(result_image.toImageMsg());
     }

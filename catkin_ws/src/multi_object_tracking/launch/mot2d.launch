@@ -3,6 +3,9 @@
 
     <arg name="robot_namespace" default="active_walker" />
     <arg name="use_tiny_model" default="true" />
+    <arg name="use_sim_time" default="false" />
+
+    <param name="use_sim_time" value="$(arg use_sim_time)" />
 
     <group ns="$(arg robot_namespace)">
         <!-- Yolo v4 detection -->
