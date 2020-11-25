@@ -56,14 +56,14 @@ class MultiObjectTrackingNode(object):
 
 
     def det_result_cb(self, msg):
-        if len(msg.dets_list) == 0:
-            # If there is no detection, just pack the laserscan topic for localmap creation 
-            trk3d_array = Trk3DArray()
-            trk3d_array.header.frame_id = msg.header.frame_id
-            trk3d_array.header.stamp = rospy.Time.now()
-            trk3d_array.scan = msg.scan
-            self.pub_trk3d_result.publish(trk3d_array)
-            return
+        # if len(msg.dets_list) == 0:
+        #     # If there is no detection, just pack the laserscan topic for localmap creation 
+        #     trk3d_array = Trk3DArray()
+        #     trk3d_array.header.frame_id = msg.header.frame_id
+        #     trk3d_array.header.stamp = rospy.Time.now()
+        #     trk3d_array.scan = msg.scan
+        #     self.pub_trk3d_result.publish(trk3d_array)
+        #     return
         dets_list = None
         info_list = None
         for idx, det in enumerate(msg.dets_list):
@@ -75,21 +75,28 @@ class MultiObjectTrackingNode(object):
                 info_list = np.vstack([info_list, [det.confidence, det.class_id]])
 
         # if no detection in a sequence
-        if len(dets_list.shape) == 1: dets_list = np.expand_dims(dets_list, axis=0)
-        if len(info_list.shape) == 1: info_list = np.expand_dims(info_list, axis=0)
-        if dets_list.shape[1] == 0:
-            # If there is no detection, just pack the laserscan topic for localmap creation
-            trk3d_array = Trk3DArray()
-            trk3d_array.header.frame_id = msg.header.frame_id
-            trk3d_array.header.stamp = rospy.Time.now()
-            trk3d_array.scan = msg.scan
-            self.pub_trk3d_result.publish(trk3d_array)
-            return
+        # if len(dets_list.shape) == 1: dets_list = np.expand_dims(dets_list, axis=0)
+        # if len(info_list.shape) == 1: info_list = np.expand_dims(info_list, axis=0)
+        # if dets_list.shape[1] == 0:
+        #     # If there is no detection, just pack the laserscan topic for localmap creation
+        #     trk3d_array = Trk3DArray()
+        #     trk3d_array.header.frame_id = msg.header.frame_id
+        #     trk3d_array.header.stamp = rospy.Time.now()
+        #     trk3d_array.scan = msg.scan
+        #     self.pub_trk3d_result.publish(trk3d_array)
+        #     return
+        
+        # rospy.loginfo('number of alive trks: {}'.format(len(self.mot_tracker.trackers)))
 
-        dets_all = {'dets': dets_list, 'info': info_list}
-        # important
-        start_time = time.time()
-        trackers = self.mot_tracker.update(dets_all)
+        if dets_list is not None:
+            if len(dets_list.shape) == 1: dets_list = np.expand_dims(dets_list, axis=0)
+            if len(info_list.shape) == 1: info_list = np.expand_dims(info_list, axis=0)
+            dets_all = {'dets': dets_list, 'info': info_list}
+            # important
+            start_time = time.time()
+            trackers = self.mot_tracker.update(dets_all)
+        else:
+            trackers = self.mot_tracker.update_with_no_dets()
         
         # Skip the visualization at first callback
         if self.last_time is None:

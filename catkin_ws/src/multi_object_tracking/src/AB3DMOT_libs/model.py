@@ -80,6 +80,45 @@ class AB3DMOT(object):			  # A baseline of 3D multi-object tracking
 		# self.reorder_back = [6, 5, 4, 0, 1, 2, 3]
 		# self.reorder_back = [6, 5, 4, 0, 1, 2, 3, 7, 8, 9]
 
+	def update_with_no_dets(self):
+		"""
+		
+		NOTE: To deal with no detections situation
+		"""
+		self.frame_count += 1
+
+		trks = np.zeros((len(self.trackers), 3))         # N x 3 , # get predicted locations from existing trackers.
+		to_del = []
+		ret = []
+		for t, trk in enumerate(trks):
+			pos = self.trackers[t].predict().reshape((-1, 1))
+			# trk[:] = [pos[0], pos[1], pos[2], pos[3], pos[4], pos[5], pos[6]]   
+			trk[:] = [pos[0], pos[1], pos[2]]    
+			if (np.any(np.isnan(pos))): 
+				to_del.append(t)
+				
+		trks = np.ma.compress_rows(np.ma.masked_invalid(trks))   
+		for t in reversed(to_del): 
+			self.trackers.pop(t)
+
+		i = len(self.trackers)
+		for trk in reversed(self.trackers):
+			d = trk.get_state()      # bbox location
+			# d = d[self.reorder_back]			# change format from [x,y,z,theta,l,w,h] to [h,w,l,x,y,z,theta]
+
+			if ((trk.time_since_update < self.max_age) and (trk.hits >= self.min_hits or self.frame_count <= self.min_hits)):      
+				ret.append(np.concatenate((d, [trk.id + 1], trk.info)).reshape(1, -1)) # +1 as MOT benchmark requires positive
+			i -= 1
+
+			# remove dead tracklet
+			if (trk.time_since_update >= self.max_age): 
+				self.trackers.pop(i)
+		if (len(ret) > 0): return np.concatenate(ret)			# h,w,l,x,y,z,theta, ID, other info, confidence
+		return np.empty((0, 15))    
+
+
+
+
 	def update(self, dets_all):
 		"""
 		Params:
@@ -124,6 +163,7 @@ class AB3DMOT(object):			  # A baseline of 3D multi-object tracking
 		for i in unmatched_dets:        # a scalar of index
 			trk = KalmanBoxTracker(dets[i, :], info[i, :]) 
 			self.trackers.append(trk)
+
 		i = len(self.trackers)
 		for trk in reversed(self.trackers):
 			d = trk.get_state()      # bbox location

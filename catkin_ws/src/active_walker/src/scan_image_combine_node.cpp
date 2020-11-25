@@ -414,6 +414,10 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     std::vector<walker_msgs::BBox2D> boxes = srv.response.result.boxes;
     for(int i = 0; i < boxes.size(); i++) {
         if(is_interest_class(boxes[i].class_name)) {
+            // Skip the box which is too small
+            if(boxes[i].size_y < 80)
+                continue;
+
             ObjInfo obj_info;
             obj_info.box = boxes[i];
 
