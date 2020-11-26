@@ -2,7 +2,7 @@
 
 # -*- coding: utf-8 -*-
 '''
-@Time          : 20/04/25 15:49
+@Time          : 20/04 / 25 15:49
 @Author        : huguanghao
 @File          : demo.py
 @Noice         :
@@ -23,20 +23,22 @@ import numpy as np
 from AB3DMOT_libs.model import AB3DMOT
 
 import rospy
+from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Vector3
 from visualization_msgs.msg import Marker, MarkerArray
 from walker_msgs.msg import Det3D, Det3DArray
 from walker_msgs.msg import Trk3D, Trk3DArray
 
 
 INTEREST_CLASSES = ["person"]
-MARKER_LIFETIME = 0.2
+MARKER_LIFETIME = 0.1
 
 
 def euler_to_quaternion(roll, pitch, yaw):
-    qx = np.sin(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) - np.cos(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
-    qy = np.cos(roll/2) * np.sin(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.cos(pitch/2) * np.sin(yaw/2)
-    qz = np.cos(roll/2) * np.cos(pitch/2) * np.sin(yaw/2) - np.sin(roll/2) * np.sin(pitch/2) * np.cos(yaw/2)
-    qw = np.cos(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
+    qx = np.sin(roll / 2) * np.cos(pitch / 2) * np.cos(yaw / 2) - np.cos(roll / 2) * np.sin(pitch / 2) * np.sin(yaw / 2)
+    qy = np.cos(roll / 2) * np.sin(pitch / 2) * np.cos(yaw / 2) + np.sin(roll / 2) * np.cos(pitch / 2) * np.sin(yaw / 2)
+    qz = np.cos(roll / 2) * np.cos(pitch / 2) * np.sin(yaw / 2) - np.sin(roll / 2) * np.sin(pitch / 2) * np.cos(yaw / 2)
+    qw = np.cos(roll / 2) * np.cos(pitch / 2) * np.cos(yaw / 2) + np.sin(roll / 2) * np.sin(pitch / 2) * np.sin(yaw / 2)
     return [qx, qy, qz, qw]
 
 
@@ -50,20 +52,20 @@ class MultiObjectTrackingNode(object):
 
         self.pub_trk3d_vis = rospy.Publisher('trk3d_vis', MarkerArray, queue_size=1)
         self.pub_trk3d_result = rospy.Publisher('trk3d_result', Trk3DArray, queue_size=1)
-        self.sub_image = rospy.Subscriber("det3d_result", Det3DArray, self.det_result_cb, queue_size=1)
+        self.sub_det3d = rospy.Subscriber("det3d_result", Det3DArray, self.det_result_cb, queue_size=5)
+        self.sub_odom = rospy.Subscriber("odom", Odometry, self.odom_cb, queue_size=1)
+
+        # Ego velocity init
+        self.ego_velocity = Vector3()
         
-        print(rospy.get_name() + ' is ready.')
+        rospy.loginfo(rospy.get_name() + ' is ready.')
+
+
+    def odom_cb(self, odom_msg):
+        self.ego_velocity = odom_msg.twist.twist.linear
 
 
     def det_result_cb(self, msg):
-        # if len(msg.dets_list) == 0:
-        #     # If there is no detection, just pack the laserscan topic for localmap creation 
-        #     trk3d_array = Trk3DArray()
-        #     trk3d_array.header.frame_id = msg.header.frame_id
-        #     trk3d_array.header.stamp = rospy.Time.now()
-        #     trk3d_array.scan = msg.scan
-        #     self.pub_trk3d_result.publish(trk3d_array)
-        #     return
         dets_list = None
         info_list = None
         for idx, det in enumerate(msg.dets_list):
@@ -74,7 +76,7 @@ class MultiObjectTrackingNode(object):
                 dets_list = np.vstack([dets_list, [det.x, det.y, det.radius]])
                 info_list = np.vstack([info_list, [det.confidence, det.class_id]])
 
-        # if no detection in a sequence
+        
         # if len(dets_list.shape) == 1: dets_list = np.expand_dims(dets_list, axis=0)
         # if len(info_list.shape) == 1: info_list = np.expand_dims(info_list, axis=0)
         # if dets_list.shape[1] == 0:
@@ -85,32 +87,46 @@ class MultiObjectTrackingNode(object):
         #     trk3d_array.scan = msg.scan
         #     self.pub_trk3d_result.publish(trk3d_array)
         #     return
-        
+
         # rospy.loginfo('number of alive trks: {}'.format(len(self.mot_tracker.trackers)))
 
         if dets_list is not None:
             if len(dets_list.shape) == 1: dets_list = np.expand_dims(dets_list, axis=0)
             if len(info_list.shape) == 1: info_list = np.expand_dims(info_list, axis=0)
             dets_all = {'dets': dets_list, 'info': info_list}
-            # important
-            start_time = time.time()
+
             trackers = self.mot_tracker.update(dets_all)
         else:
+            # if no detection in a sequence
             trackers = self.mot_tracker.update_with_no_dets()
         
         # Skip the visualization at first callback
         if self.last_time is None:
-            self.last_time = time.time()
+            self.last_time = rospy.Time.now()
+            # self.last_time = time.time()
             return
 
         # saving results, loop over each tracklet           
         marker_array = MarkerArray()
         trk3d_array = Trk3DArray()
+
+        time_now = rospy.Time.now()
+        delta_t = (time_now - self.last_time).to_sec()
+        if delta_t < 0.1:
+            small_time = (0.1 - delta_t) * 0.92
+            delta_t += small_time
+            rospy.sleep(small_time)
+
+        # sys.stdout.write("{:.4f} s \r".format(delta_t))
+        # sys.stdout.flush()
+        self.last_time = time_now
+
         for idx, d in enumerate(trackers):
             '''
                 x, y, r, vx, vy, id, confidence, class_id
             '''
-            vx, vy = np.array([d[3], d[4]]) / (time.time() - self.last_time)
+            # vx, vy = np.array([d[3], d[4]]) / (time.time() - self.last_time)
+            vx, vy = np.array([d[3], d[4]]) / delta_t - np.array([self.ego_velocity.x, self.ego_velocity.y])
             speed = np.sqrt(vx**2 + vy**2)       # Note: reconstruct speed by multipling the sampling rate 
             yaw = np.arctan2(vy, vx) 
 
@@ -127,7 +143,7 @@ class MultiObjectTrackingNode(object):
             # Visualization
             marker = Marker()
             marker.header.frame_id = msg.header.frame_id
-            marker.header.stamp = rospy.Time.now()
+            marker.header.stamp = rospy.Time()
             marker.ns = 'object'
             marker.id = idx
             marker.lifetime = rospy.Duration(MARKER_LIFETIME)#The lifetime of the bounding-box, you can modify it according to the power of your machine.
@@ -149,24 +165,24 @@ class MultiObjectTrackingNode(object):
             marker_array.markers.append(marker)
 
             # Show tracking ID
-            # str_marker = Marker()
-            # str_marker.header.frame_id = msg.header.frame_id
-            # str_marker.header.stamp = rospy.Time.now()
-            # str_marker.ns = 'text'
-            # str_marker.id = idx
-            # str_marker.scale.z = 0.4 #The size of the text
-            # str_marker.color.b = 1.0
-            # str_marker.color.g = 1.0
-            # str_marker.color.r = 1.0
-            # str_marker.color.a = 1.0
-            # str_marker.pose.position.x = d[0]
-            # str_marker.pose.position.y = d[1]
-            # str_marker.pose.position.z = 0.0
-            # str_marker.lifetime = rospy.Duration(MARKER_LIFETIME)
-            # str_marker.type = Marker.TEXT_VIEW_FACING
-            # str_marker.action = Marker.ADD
-            # str_marker.text = str(d[5])
-            # marker_array.markers.append(str_marker)
+            str_marker = Marker()
+            str_marker.header.frame_id = msg.header.frame_id
+            str_marker.header.stamp = rospy.Time()
+            str_marker.ns = 'text'
+            str_marker.id = idx
+            str_marker.scale.z = 0.4 #The size of the text
+            str_marker.color.b = 1.0
+            str_marker.color.g = 1.0
+            str_marker.color.r = 1.0
+            str_marker.color.a = 1.0
+            str_marker.pose.position.x = d[0]
+            str_marker.pose.position.y = d[1]
+            str_marker.pose.position.z = 0.0
+            str_marker.lifetime = rospy.Duration(MARKER_LIFETIME)
+            str_marker.type = Marker.TEXT_VIEW_FACING
+            str_marker.action = Marker.ADD
+            str_marker.text = "{}".format(int(d[5])) # str(d[5])
+            marker_array.markers.append(str_marker)
             
             # Show direction 
             arrow_marker = copy.deepcopy(marker)
@@ -180,11 +196,11 @@ class MultiObjectTrackingNode(object):
         self.pub_trk3d_vis.publish(marker_array)
         
         trk3d_array.header.frame_id = msg.header.frame_id
-        trk3d_array.header.stamp = rospy.Time.now()
+        trk3d_array.header.stamp = rospy.Time()
         trk3d_array.scan = msg.scan
         self.pub_trk3d_result.publish(trk3d_array)
 
-        self.last_time = time.time()
+        # self.last_time = time.time()
 
         # print("elapsed time: {}".format(cycle_time))        
 

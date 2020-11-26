@@ -47,14 +47,14 @@ class KalmanBoxTracker(object):
 		                      [0,0,1,0,0]])
 
 
-
+		self.kf.R *= 1e-2
 		
 		# self.kf.R[0:,0:] *= 10.   # measurement uncertainty
 		self.kf.P[3:, 3:] *= 1000. 	# state uncertainty, give high uncertainty to the unobservable initial velocities, covariance matrix
 		self.kf.P *= 10.
 
 		# self.kf.Q[-1,-1] *= 0.01    # process uncertainty
-		self.kf.Q[3:, 3:] *= 0.01
+		self.kf.Q[3:, 3:] *= 1e-3
 		self.kf.x[:3] = det2D.reshape((3, 1)) # x, y, r
 
 		self.time_since_update = 0
