@@ -1,6 +1,9 @@
 # active-walker
 The repo is prepared for the active walker project for elders or people in mobility impaired.
 
+## Simulation
+The walking assist robot is conducting the pedestrians tracking with camera and laser scanner in Gazebo environment.
+![simulation](figures/simulation_pedestrian_tracking.jpg)
 
 ## I. Prerequisite
 a. Dependencies (Please check out "Trouble shooting section" once you get installation problem.)

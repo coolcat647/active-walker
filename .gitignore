@@ -21,8 +21,7 @@ __pycache__
 *.zip
 *.tar.gz
 models/
-!./figures/*.jpg
-!./figures/*.png
+!figures/*
 *.csv
 
 # Deep learning related
