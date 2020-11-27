@@ -16,7 +16,7 @@ Astar::Node::Node(Grid2D grid_, Node *parent_) {
     g_val = h_val = 0;
     decision = -1;
 }
-ostream& operator<<(ostream& out, const Astar::Node& node) {
+std::ostream& operator<<(std::ostream& out, const Astar::Node& node) {
     out << "(x:" << node.grid.x << ", y:" << node.grid.y;
     return out;
 }

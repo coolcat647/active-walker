@@ -18,7 +18,7 @@
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
  
-using namespace std;
+// using namespace std;
 
 namespace Astar {
     struct Grid2D{
@@ -40,7 +40,7 @@ namespace Astar {
 
         // c++ define a function-like method to initialize struct data
         Node(Grid2D grid_, Node *parent_ = nullptr);
-        friend ostream& operator<<(ostream& out, const Node& node);
+        friend std::ostream& operator<<(std::ostream& out, const Node& node);
     };
 
     using HeuristicFunc = std::function<int(Grid2D, Grid2D)>;

@@ -8,7 +8,7 @@
     <arg name="use_agf" default="true" />
 
     <arg name="solver_timeout_ms" default="100.0" />
-    <arg name="subgoal_timer_interval" default="0.5" />
+    <arg name="subgoal_timer_interval" default="0.25" />
 
     <group ns="$(arg robot_namespace)">
         <!-- Scan to local map node -->
