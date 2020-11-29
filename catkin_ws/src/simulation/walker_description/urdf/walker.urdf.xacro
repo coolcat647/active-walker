@@ -62,6 +62,12 @@
         <parent link="base_link"/>
         <child link="footprint"/>
     </joint> -->
+    <link name="base_footprint" />
+    <joint name="footprint_joint" type="fixed">
+        <origin xyz="0 0 -0.15671" rpy="0 0 0" />
+        <parent link="base_link"/>
+        <child link="base_footprint"/>
+    </joint>
 
 
     <!-- Rear right wheel link & joint -->
