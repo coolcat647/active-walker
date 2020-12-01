@@ -21,7 +21,9 @@
 // Custom library
 #include "Astar.hpp"
 
-using namespace std;
+
+static const double kMaxDisOfRobotTrackedPoint = 2.0;
+static const double kThresPercentageOfArrival = 0.7;
 
 
 template<class ForwardIterator>
@@ -42,7 +44,8 @@ public:
     void localmap_cb(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr);
     void footprint_cb(const geometry_msgs::PolygonStamped::ConstPtr &footprint_msg_ptr);
     void progress_cb(const std_msgs::Float32::ConstPtr &msg_ptr);
-    int get_cost(vector<int8_t> vec, int map_width, int map_height, int target_idx);
+    int get_local_avg_cost(std::vector<int8_t> vec, int map_width, int map_height, int target_idx);
+    int get_local_max_cost(std::vector<int8_t> vec, int map_width, int map_height, int target_idx);
     geometry_msgs::Point generate_sub_goal(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, tf::StampedTransform tf_base2odom);
     bool is_footprint_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, geometry_msgs::PolygonStamped::ConstPtr &footprint_ptr);
     bool is_path_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, nav_msgs::Path::Ptr path_ptr, tf::StampedTransform tf_base2odom);
@@ -61,7 +64,7 @@ public:
     nav_msgs::OccupancyGrid::ConstPtr localmap_ptr_;
     nav_msgs::Path::Ptr walkable_path_ptr_;
     geometry_msgs::PolygonStamped::ConstPtr footprint_ptr_;
-    string path_frame_id_;
+    std::string path_frame_id_;
 
     // TF related
     tf::TransformListener tflistener_;
@@ -92,7 +95,7 @@ AstarPathfindingNode::AstarPathfindingNode(ros::NodeHandle nh, ros::NodeHandle p
     ros::param::param<double>("~path_start_offsetx", path_start_offsetx_, 0.44);    // trick: start path from robot front according to the robot footprint
     ros::param::param<double>("~path_start_offsety", path_start_offsety_, 0.0);
     // Fixed parameters
-    ros::param::param<string>("~path_frame_id", path_frame_id_, "odom");
+    ros::param::param<std::string>("~path_frame_id", path_frame_id_, "odom");
 
     // ROS publishers & subscribers
     sub_localmap_ = nh_.subscribe("local_map", 5, &AstarPathfindingNode::localmap_cb, this);
@@ -131,7 +134,7 @@ AstarPathfindingNode::AstarPathfindingNode(ros::NodeHandle nh, ros::NodeHandle p
     flag_planning_busy_ = false;
     timer_ = nh_.createTimer(ros::Duration(subgoal_timer_interval_), &AstarPathfindingNode::timer_cb, this);
 
-    cout << ros::this_node::getName() << " is ready." << endl;
+    ROS_INFO_STREAM(ros::this_node::getName() << " is ready.");
 }
 
 
@@ -181,8 +184,10 @@ bool AstarPathfindingNode::is_robot_following_path(nav_msgs::Path::Ptr path_ptr,
     //             tracking_point.pose.position.y, \
     //             robot_position.getX(), \
     //             robot_position.getY());
-    if(std::hypot(tracking_point.pose.position.x - robot_position.getX(), tracking_point.pose.position.y - robot_position.getY()) > 2.0)
+    double separated_distance = std::hypot(tracking_point.pose.position.x - robot_position.getX(), tracking_point.pose.position.y - robot_position.getY());
+    if(separated_distance > kMaxDisOfRobotTrackedPoint){
         return false;
+    }
     else
         return true;
 }
@@ -242,7 +247,7 @@ geometry_msgs::Point AstarPathfindingNode::generate_sub_goal(const nav_msgs::Occ
     // Sub-goal candidates
     std::vector<double> candidate_score_list;
     double prefer_subgoal_distance = 6.0;
-    double distance_resolution = map_resolution * 4;
+    double distance_resolution = 0.4; // map_resolution * 2;
 
     for(int i = 18; i >= 0; i--) {
         double theta_from_yaxis = M_PI / 18 * i;
@@ -253,7 +258,7 @@ geometry_msgs::Point AstarPathfindingNode::generate_sub_goal(const nav_msgs::Occ
             int map_x = std::round((tmp_dis * std::sin(theta_from_yaxis) - map_origin_x + path_start_offsetx_) / map_resolution);
             int map_y = std::round((tmp_dis * std::cos(theta_from_yaxis) - map_origin_y + path_start_offsety_) / map_resolution);
             int idx = map_y * map_width + map_x;
-            if(get_cost((map_msg_ptr->data), map_width, map_height, idx) > 50 || idx >= map_width * map_height || map_msg_ptr->data[idx] == -1) {
+            if(get_local_max_cost((map_msg_ptr->data), map_width, map_height, idx) > 50 || idx >= map_width * map_height || map_msg_ptr->data[idx] == -1) {
                 tmp_dis -= distance_resolution * 3;
                 break;
             }
@@ -297,14 +302,36 @@ geometry_msgs::Point AstarPathfindingNode::generate_sub_goal(const nav_msgs::Occ
 }
 
 
-int AstarPathfindingNode::get_cost(vector<int8_t> vec, int map_width, int map_height, int target_idx) {
+int AstarPathfindingNode::get_local_max_cost(std::vector<int8_t> vec, int map_width, int map_height, int target_idx) {
     int kernel_size = 5;
     int bound = kernel_size / 2;
     int cost = 0;
+    int max_map_idx = map_width * map_height;
+
     for(int y = -bound; y <= bound; y++) {
         for (int x = -bound; x <= bound; x++) {
             int op_idx = target_idx + x + map_width * y;
-            if(op_idx < 0 || op_idx > map_width * map_height) continue;           // upper and bottom bound
+            if(op_idx < 0 || op_idx > max_map_idx) continue;           // upper and bottom bound
+            else if(abs((op_idx % map_width) - (target_idx % map_width)) > bound) continue;  // left and right bound
+            
+            if(vec[op_idx] > cost)
+                cost = vec[op_idx];
+        }
+    }
+    return cost;
+}
+
+
+int AstarPathfindingNode::get_local_avg_cost(std::vector<int8_t> vec, int map_width, int map_height, int target_idx) {
+    int kernel_size = 17;
+    int bound = kernel_size / 2;
+    int cost = 0;
+    int max_map_idx = map_width * map_height;
+
+    for(int y = -bound; y <= bound; y++) {
+        for (int x = -bound; x <= bound; x++) {
+            int op_idx = target_idx + x + map_width * y;
+            if(op_idx < 0 || op_idx > max_map_idx) continue;           // upper and bottom bound
             else if(abs((op_idx % map_width) - (target_idx % map_width)) > bound) continue;  // left and right bound
             else 
                 cost += vec[op_idx];
@@ -351,17 +378,17 @@ void AstarPathfindingNode::timer_cb(const ros::TimerEvent&){
             flag_planning_busy_ = false;
             return;
         }
-        else if((1.0 - tracking_progress_percentage_) > 1e-3 && \
+        else if(tracking_progress_percentage_ < kThresPercentageOfArrival && \
                 is_path_safe(localmap_ptr_, walkable_path_ptr_, tf_base2odom) && \
                 is_robot_following_path(walkable_path_ptr_, tracking_progress_percentage_, tf_base2odom)){
             // no need plan, just publish old path
-            walkable_path_ptr_->header.stamp = ros::Time();
+            walkable_path_ptr_->header.stamp = ros::Time::now();
             pub_walkable_path_.publish(walkable_path_ptr_);
             flag_planning_busy_ = false;
             return;
         }else{
             geometry_msgs::Point subgoal_pt;
-            if((1.0 - tracking_progress_percentage_) < 1e-3){
+            if(tracking_progress_percentage_ >= kThresPercentageOfArrival){
                 // Arrival situation
                 subgoal_pt = generate_sub_goal(localmap_ptr_, tf_base2odom);
                 ROS_WARN("Almost arrivied, generate new goal: (%.2f, %.2f)", subgoal_pt.x, subgoal_pt.y);
@@ -377,7 +404,7 @@ void AstarPathfindingNode::timer_cb(const ros::TimerEvent&){
 
             if(std::hypot(subgoal_pt.x - path_start_offsetx_, subgoal_pt.y - path_start_offsety_) < 0.2){
                 walkable_path_ptr_ = nav_msgs::Path::Ptr(new nav_msgs::Path());
-                walkable_path_ptr_->header.stamp = ros::Time();
+                walkable_path_ptr_->header.stamp = ros::Time::now();
                 pub_walkable_path_.publish(walkable_path_ptr_);
                 flag_planning_busy_ = false;
                 return;
@@ -411,13 +438,13 @@ void AstarPathfindingNode::timer_cb(const ros::TimerEvent&){
                     // mat_transformed.getRotation(q_transformed);
                     // tf::quaternionTFToMsg(q_transformed, it->pose.orientation);
                 }
-                walkable_path_ptr_->header.stamp = ros::Time();
+                walkable_path_ptr_->header.stamp = ros::Time::now();
                 pub_walkable_path_.publish(walkable_path_ptr_);
             }
             else{
                 // Publish empty path if there are no path finding solution.
                 ROS_WARN("No solution for path finding in timeout: %.1f ms", solver_timeout_ms_);
-                walkable_path_ptr_->header.stamp = ros::Time();
+                walkable_path_ptr_->header.stamp = ros::Time::now();
                 pub_walkable_path_.publish(walkable_path_ptr_);
             }
         }        
@@ -430,7 +457,7 @@ void AstarPathfindingNode::timer_cb(const ros::TimerEvent&){
 
 
 void AstarPathfindingNode::sigint_cb(int sig) {
-    cout << "\nNode name: " << ros::this_node::getName() << " is shutdown." << endl;
+    ROS_INFO_STREAM("Node name: " << ros::this_node::getName() << " is shutdown.");
     // All the default sigint handler does is call shutdown()
     ros::shutdown();
 }

@@ -5,11 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import time
+import copy
 from CubicSpline import cubic_spline_planner
 
 # ROS
 import rospy
-from geometry_msgs.msg import Twist, PoseStamped, Quaternion, Point, Pose2D
+from geometry_msgs.msg import Twist, PoseStamped, Quaternion, Point, PointStamped, Pose2D
 from nav_msgs.msg import Path, Odometry
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
 from std_msgs.msg import Float32
@@ -19,9 +20,8 @@ k = 0.5  # control gain
 Kp = 1.0  # speed proportional gain
 dt = 0.1  # [s] time difference
 L = 0.6  # [m] Wheel base of vehicle
-max_steer = np.radians(30.0)  # [rad] max steering angle
-CMD_RATE = 5.0
 MAX_ANGULAR_VELOCITY = 1.0
+TARGET_SPEED = 0.4
 
 class StanleyControlNode(object):
     def __init__(self):
@@ -29,26 +29,31 @@ class StanleyControlNode(object):
 
         # Path related
         self.flat_path = []
-        self.is_new_path = False
-        self.path_update_mutex = threading.Lock()
+        self.updated_flat_path = []
+
+        self.flag_path_update = False
 
         # Odom related
         self.robot_pose = Pose2D()
         self.robot_twist = Twist()
-        self.pose_update_mutex = threading.Lock()
+
+        # ROS parameters
+        self.smooth_path_resolution = rospy.get_param("~map_resolution", 0.2) / 2.0     # much smoother than original path
+        self.cmd_freq               = rospy.get_param("cmd_freq", 5.0)
 
         # ROS publisher & subscriber
         self.pub_cmd = rospy.Publisher('cmd_vel', Twist, queue_size=1)
-        self.pub_path_flat = rospy.Publisher('flat_path', Path, queue_size=1)
+        self.pub_path_flat = rospy.Publisher('smooth_path', Path, queue_size=1)
         self.pub_tracking_progress = rospy.Publisher('tracking_progress', Float32, queue_size=1)
+        self.pub_short_term_goal = rospy.Publisher('short_term_goal', PointStamped, queue_size=1)
+
         self.sub_path = rospy.Subscriber("walkable_path", Path, self.path_cb, queue_size=1)
-        self.sub_odom = rospy.Subscriber("wheel_odom", Odometry, self.odom_cb, queue_size=1)
-        print(rospy.get_name() + ' is ready.')
+        self.sub_odom = rospy.Subscriber("odom", Odometry, self.odom_cb, queue_size=1)
+
+        rospy.loginfo(rospy.get_name() + ' is ready.')
         
 
     def odom_cb(self, msg):
-        ### Critical section start ###
-        self.pose_update_mutex.acquire()
         self.robot_pose.x = msg.pose.pose.position.x
         self.robot_pose.y = msg.pose.pose.position.y
         euler_angle = euler_from_quaternion([msg.pose.pose.orientation.x, 
@@ -57,54 +62,42 @@ class StanleyControlNode(object):
                                             msg.pose.pose.orientation.w])
         self.robot_pose.theta = euler_angle[2]
         self.robot_twist = msg.twist.twist
-        self.pose_update_mutex.release()
-        ### Critical section end ###
 
 
     def path_cb(self, msg):
-        path_x_raw = []
-        path_y_raw = []
-        # rospy.logwarn("Get new path, len={}".format(len(msg.poses)))
-        if len(msg.poses) == 0:
-            self.path_update_mutex.acquire()
-            self.flat_path = []
-            self.is_new_path = True
-            self.path_update_mutex.release()
-            return
-        elif len(msg.poses) == 1:
-            self.path_update_mutex.acquire()
-            yaw = np.arctan2(msg.poses[i].pose.position.y - self.robot_pose.y, msg.poses[i].pose.position.x - self.robot_pose.x)
-            self.flat_path = [Pose2D(x=msg.poses[i].pose.position.x, y=msg.poses[i].pose.position.y, theta=yaw),]
-            self.is_new_path = True
-            self.path_update_mutex.release()
-            return
+        if len(msg.poses) < 2:
+            self.updated_flat_path = []
+            self.flag_path_update = True
+        elif len(msg.poses) < 3:
+            yaw = np.arctan2(msg.poses[-1].pose.position.y - self.robot_pose.y, msg.poses[-1].pose.position.x - self.robot_pose.x)
+            self.updated_flat_path = [Pose2D(x=msg.poses[-1].pose.position.x, y=msg.poses[-1].pose.position.y, theta=yaw),]
+            self.flag_path_update = True
 
-        for i in range(len(msg.poses)-1, 0, -1):
-            path_x_raw.append(msg.poses[i].pose.position.x)
-            path_y_raw.append(msg.poses[i].pose.position.y)
-        cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(
-        path_x_raw, path_y_raw, ds=0.4)
+        else:
+            path_x_raw = []
+            path_y_raw = []
+            for i in range(len(msg.poses)-1, -1, -1):
+                path_x_raw.append(msg.poses[i].pose.position.x)
+                path_y_raw.append(msg.poses[i].pose.position.y)
+            cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(path_x_raw,
+                                                                          path_y_raw,
+                                                                          ds=self.smooth_path_resolution)
+            self.updated_flat_path = []
+            for i in range(len(cx)):
+                self.updated_flat_path.append(Pose2D(x=cx[i], y=cy[i], theta=cyaw[i]))
+            self.flag_path_update = True
 
-        ### Critical section start ###
-        self.path_update_mutex.acquire()
-        self.flat_path = []
-        for i in range(len(cx)):
-            self.flat_path.append(Pose2D(x=cx[i], y=cy[i], theta=cyaw[i]))
-        self.is_new_path = True
-        self.path_update_mutex.release()
-        ### Critical section end ###
-
-        # # Visualiztion
-        # flat_path_msg = Path()
-        # for i in range(len(cx)):
-        #     tmp_pose = PoseStamped()
-        #     tmp_pose.pose.position = Point(cx[i], cy[i], 0)
-        #     q = quaternion_from_euler(0, 0, cyaw[i])
-        #     tmp_pose.pose.orientation = Quaternion(q[0], q[1], q[2], q[3])
-        #     flat_path_msg.poses.append(tmp_pose)
-        # flat_path_msg.header.frame_id = msg.header.frame_id
-        # flat_path_msg.header.stamp = rospy.Time.now()
-        # self.pub_path_flat.publish(flat_path_msg)
+            # Visualiztion
+            flat_path_msg = Path()
+            for i in range(len(cx)):
+                tmp_pose = PoseStamped()
+                tmp_pose.pose.position = Point(cx[i], cy[i], 0)
+                q = quaternion_from_euler(0, 0, cyaw[i])
+                tmp_pose.pose.orientation = Quaternion(q[0], q[1], q[2], q[3])
+                flat_path_msg.poses.append(tmp_pose)
+            flat_path_msg.header.frame_id = msg.header.frame_id
+            flat_path_msg.header.stamp = rospy.Time.now()
+            self.pub_path_flat.publish(flat_path_msg)
 
 
     def pid_control(self, target, current):
@@ -170,9 +163,10 @@ class StanleyControlNode(object):
         :param cy: [float]
         :return: (int, float)
         """
+
         # Calc front axle position
-        fx = robot_pose.x + L * np.cos(robot_pose.theta)
-        fy = robot_pose.y + L * np.sin(robot_pose.theta)
+        fx = robot_pose.x + 2*L * np.cos(robot_pose.theta)
+        fy = robot_pose.y + 2*L * np.sin(robot_pose.theta)
 
         # Search nearest point index
         dx = []
@@ -193,83 +187,51 @@ class StanleyControlNode(object):
 
 
     def shutdown_cb(self):
-        if self.path_update_mutex.locked():
-            self.path_update_mutex.release()
-        if self.pose_update_mutex.locked():
-            self.pose_update_mutex.release()
+        self.pub_cmd.publish(Twist())
         rospy.loginfo("Shutdown " + rospy.get_name())
         
 
 if __name__ == '__main__':
     rospy.init_node('stanley_control_node', anonymous=False)
     node = StanleyControlNode()
-    
-    target_speed = 0.4
-    is_first_run = True
-    last_run_time = None
 
-    # Wait for the first flat path comming
-    while len(node.flat_path) == 0 and not rospy.is_shutdown():
-        rospy.sleep(0.5)
-    while node.pose_update_mutex.locked() and not rospy.is_shutdown():
-        rospy.sleep(0.5)
-    # target_idx, _  = node.calc_target_index(node.robot_pose, node.flat_path)
-
-    rate = rospy.Rate(CMD_RATE)
+    rate = rospy.Rate(node.cmd_freq)
     while not rospy.is_shutdown():
-        if is_first_run:
-            is_first_run = False
-            last_run_time = rospy.Time.now()
-            continue
-        current_run_time = rospy.Time.now()
+        if node.flag_path_update == True:
+            node.flag_path_update = False
 
-        # It promise that you always get the newest robot odometry before sending the control command
-        while node.pose_update_mutex.locked() or node.path_update_mutex.locked():
-            pass
+            cmp_result = all(map(lambda x, y: x == y, node.flat_path, node.updated_flat_path))
+            if not cmp_result or len(node.flat_path) != len(node.updated_flat_path):
+                node.flat_path = copy.deepcopy(node.updated_flat_path)
+                # rospy.loginfo("path updated!")
 
-        if node.is_new_path == True:
-            if len(node.flat_path) <= 1:
-                rospy.logwarn("Empty planning path, wait for new path")
-                last_run_time = current_run_time
-                node.pub_cmd.publish(Twist())
-                rate.sleep()
-                continue
-            node.is_new_path = False
-            target_idx, _  = node.calc_target_index(node.robot_pose, node.flat_path)
-
-        # Tracking progress
-        # rospy.logwarn("Tracking progress:{}/{}".format(target_idx+1, len(node.flat_path)))
-        node.pub_tracking_progress.publish((target_idx+1) / len(node.flat_path))
-        
-
-        # 
-        accel_linear = node.pid_control(target_speed, node.robot_twist.linear.x)
-        delta_omega, target_idx = node.stanley_control(node.robot_pose, node.robot_twist, node.flat_path, target_idx)
-        
-
-        # Visualization
-        flat_path_msg = Path()
-        tmp_pose = PoseStamped()
-        tmp_pose.pose.position = Point(node.flat_path[target_idx].x, node.flat_path[target_idx].y, 0)
-        q = quaternion_from_euler(0, 0, node.flat_path[target_idx].theta)
-        tmp_pose.pose.orientation = Quaternion(q[0], q[1], q[2], q[3])
-        flat_path_msg.poses.append(tmp_pose)
-        flat_path_msg.header.frame_id = "odom"
-        flat_path_msg.header.stamp = rospy.Time.now()
-        node.pub_path_flat.publish(flat_path_msg)
-
-        if np.hypot(node.robot_pose.x - node.flat_path[-1].x, node.robot_pose.y - node.flat_path[-1].y) > 0.2:
-            # Car command 
-            dt = (current_run_time - last_run_time).to_sec()
-            cmd_msg = Twist()
-            cmd_msg.linear.x = np.clip(node.robot_twist.linear.x + accel_linear * dt, 0, target_speed)
-            # cmd_msg.angular.z = np.clip(delta_omega * dt, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY) + np.random.rand(1) - 0.5
-            cmd_msg.angular.z = np.clip(delta_omega * dt, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY)
-            node.pub_cmd.publish(cmd_msg)
-        else:
+        if len(node.flat_path) == 0:
+            rospy.loginfo("Empty planning path, wait for new path")
             node.pub_cmd.publish(Twist())
+        else:
+            target_idx, _  = node.calc_target_index(node.robot_pose, node.flat_path)
+            accel_linear = node.pid_control(TARGET_SPEED, node.robot_twist.linear.x)
+            delta_omega, target_idx = node.stanley_control(node.robot_pose, node.robot_twist, node.flat_path, target_idx)
 
-        # time += dt
-        last_run_time = current_run_time
+            # Publish tracking progress
+            node.pub_tracking_progress.publish((target_idx+1) / len(node.flat_path))
+
+            # Publish short term goal
+            point_msg = PointStamped()
+            point_msg.point =  Point(node.flat_path[target_idx].x, node.flat_path[target_idx].y, 0)
+            point_msg.header.stamp = rospy.Time()
+            point_msg.header.frame_id = "odom"
+            node.pub_short_term_goal.publish(point_msg)
+
+            if np.hypot(node.robot_pose.x - node.flat_path[-1].x, node.robot_pose.y - node.flat_path[-1].y) > 0.2:
+                # Car command 
+                dt = 1.0 / node.cmd_freq
+                cmd_msg = Twist()
+                cmd_msg.linear.x = np.clip(node.robot_twist.linear.x + accel_linear * dt, 0, TARGET_SPEED)
+                cmd_msg.angular.z = np.clip(delta_omega * dt, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY)
+                node.pub_cmd.publish(cmd_msg)
+            else:
+                node.pub_cmd.publish(Twist())
+
         rate.sleep()
-        
+
