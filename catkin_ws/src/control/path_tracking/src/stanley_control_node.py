@@ -21,7 +21,7 @@ Kp = 1.0  # speed proportional gain
 dt = 0.1  # [s] time difference
 L = 0.6  # [m] Wheel base of vehicle
 MAX_ANGULAR_VELOCITY = 1.0
-TARGET_SPEED = 0.4
+TARGET_SPEED = 0.4 * 2
 
 class StanleyControlNode(object):
     def __init__(self):
@@ -214,7 +214,8 @@ if __name__ == '__main__':
             delta_omega, target_idx = node.stanley_control(node.robot_pose, node.robot_twist, node.flat_path, target_idx)
 
             # Publish tracking progress
-            node.pub_tracking_progress.publish((target_idx+1) / len(node.flat_path))
+            tracking_progress = (target_idx + 1) / len(node.flat_path)
+            node.pub_tracking_progress.publish(tracking_progress)
 
             # Publish short term goal
             point_msg = PointStamped()
@@ -223,7 +224,8 @@ if __name__ == '__main__':
             point_msg.header.frame_id = "odom"
             node.pub_short_term_goal.publish(point_msg)
 
-            if np.hypot(node.robot_pose.x - node.flat_path[-1].x, node.robot_pose.y - node.flat_path[-1].y) > 0.2:
+            # if np.hypot(node.robot_pose.x - node.flat_path[-1].x, node.robot_pose.y - node.flat_path[-1].y) > 0.2:
+            if tracking_progress < 1.0:
                 # Car command 
                 dt = 1.0 / node.cmd_freq
                 cmd_msg = Twist()
@@ -231,6 +233,7 @@ if __name__ == '__main__':
                 cmd_msg.angular.z = np.clip(delta_omega * dt, -MAX_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY)
                 node.pub_cmd.publish(cmd_msg)
             else:
+                rospy.loginfo("goal reached!")
                 node.pub_cmd.publish(Twist())
 
         rate.sleep()

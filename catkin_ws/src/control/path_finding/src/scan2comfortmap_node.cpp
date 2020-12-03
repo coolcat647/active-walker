@@ -307,8 +307,8 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
         double speed = std::hypot(msg_ptr->trks_list[i].vx, msg_ptr->trks_list[i].vy);
 
         // Calculate object position in local map
-        int map_x = std::round((pt_base.getX() - map_origin_x) / resolution);
-        int map_y = std::round((pt_base.getY() - map_origin_y) / resolution);
+        int map_x = std::floor((pt_base.getX() - map_origin_x) / resolution);
+        int map_y = std::floor((pt_base.getY() - map_origin_y) / resolution);
         int idx = map_y * map_width + map_x;
 
         if((0 < idx) && (idx < map_limit) && (speed > 0.1)){
