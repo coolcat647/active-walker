@@ -20,7 +20,7 @@
   <queue id="info_desk" x="20" y="15" direction="0"/>
 
 
-    <!--Agents-->
+    <!--Robot-->
     <agent x="17" y="11" n="1" dx="0" dy="0" type="2">
         <addwaypoint id="robot_start"/>
         <addwaypoint id="robot_goal"/>

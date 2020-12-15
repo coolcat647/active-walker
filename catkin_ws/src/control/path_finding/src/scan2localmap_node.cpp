@@ -223,7 +223,7 @@ void Scan2LocalmapNode::asymmetric_gaussian_filter(std::vector<int8_t> &vec, dou
 
     int min_bound = -bound;
     int max_bound = (bound + kernel_size % 2);
-    int max_map_idx = map_width * map_height;
+    int max_map_idx = map_width * map_height - 1;
 
     for(int y = min_bound; y < max_bound; y++) {
         for (int x = min_bound; x < max_bound; x++) {
@@ -270,7 +270,7 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
     double map_origin_y = localmap_ptr_->info.origin.position.y;
     int map_width = localmap_ptr_->info.width;
     int map_height = localmap_ptr_->info.height;
-    int map_limit = map_width * map_height;
+    int map_limit = map_width * map_height - 1;
 
     // Static obstacle inflation
     for(int i = 0; i < cloud_transformed->points.size(); i++) {
@@ -281,8 +281,8 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
         else if(fabs(laser_y) > map_height * resolution / 2)
             continue;
 
-        int map_x = std::round((laser_x - map_origin_x) / resolution);
-        int map_y = std::round((laser_y - map_origin_y) / resolution);
+        int map_x = std::floor((laser_x - map_origin_x) / resolution);
+        int map_y = std::floor((laser_y - map_origin_y) / resolution);
         int idx = map_y * map_width + map_x;
         
         if((0 < idx) && (idx < map_limit)){
@@ -307,11 +307,12 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
         double speed = std::hypot(msg_ptr->trks_list[i].vx, msg_ptr->trks_list[i].vy);
 
         // Calculate object position in local map
-        int map_x = std::round((pt_base.getX() - map_origin_x) / resolution);
-        int map_y = std::round((pt_base.getY() - map_origin_y) / resolution);
+        int map_x = std::floor((pt_base.getX() - map_origin_x) / resolution);
+        int map_y = std::floor((pt_base.getY() - map_origin_y) / resolution);
         int idx = map_y * map_width + map_x;
 
-        if((0 < idx) && (idx < map_limit) && (speed > 0.1)){
+        // if((0 < idx) && (idx < map_limit) && (speed > 0.1)){
+        if((0 < idx) && (idx < map_limit)){
             asymmetric_gaussian_filter(localmap_ptr_->data, resolution, map_width, map_height, idx, yaw, speed, 100);
         }
     }
@@ -336,7 +337,7 @@ void Scan2LocalmapNode::apply_butterworth_filter(std::vector<int8_t> &vec, int m
 
     int min_bound = -bound;
     int max_bound = (bound + kernel_size % 2);
-    int max_map_idx = map_width * map_height;
+    int max_map_idx = map_width * map_height - 1;
 
     // ROS_WARN("kernel_size: %d, bound: %d", kernel_size, bound);
 
@@ -349,7 +350,7 @@ void Scan2LocalmapNode::apply_butterworth_filter(std::vector<int8_t> &vec, int m
             // if(vec[op_idx] < 0) continue;                                 // do not apply filter out of laser range
             if(op_kernel_val == 0 || vec[op_idx] >= op_kernel_val) continue;
             else if(op_idx < 0 || op_idx > max_map_idx) continue;           // upper and bottom bound
-            else if(abs((op_idx % map_width) - (target_idx % map_width)) > bound) continue;  // left and right bound
+            else if(abs((op_idx % map_width) - (target_idx % map_width)) >= bound) continue;  // left and right bound
             else{
                 int tmp_val = op_kernel_val + vec[op_idx];
                 vec[op_idx] = (tmp_val > peak_value)? peak_value : tmp_val;
@@ -413,7 +414,7 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
     double map_origin_y = localmap_ptr_->info.origin.position.y;
     int map_width = localmap_ptr_->info.width;
     int map_height = localmap_ptr_->info.height;
-    int map_limit = map_width * map_height;
+    int map_limit = map_width * map_height - 1;
 
     for(int i = 0; i < cloud_transformed->points.size(); i++) {
         double laser_x = cloud_transformed->points[i].x;
@@ -424,8 +425,8 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
             continue;
 
         // Add wall(non-walkable) space
-        int map_x = std::round((laser_x - map_origin_x) / resolution);
-        int map_y = std::round((laser_y - map_origin_y) / resolution);
+        int map_x = std::floor((laser_x - map_origin_x) / resolution);
+        int map_y = std::floor((laser_y - map_origin_y) / resolution);
         int idx = map_y * map_width + map_x;
         
         if((0 < idx) && (idx < map_limit)){

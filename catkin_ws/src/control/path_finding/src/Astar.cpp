@@ -103,8 +103,9 @@ bool Astar::Solver::solve_ros(nav_msgs::OccupancyGrid::ConstPtr map_msg_ptr, nav
             if(find_node(close_set, tmp_grid) || is_collision(tmp_grid))
                 continue;                                           // Skip visited node & skip wall 
 
-            int total_cost = against_wall_cost(cur_node->grid) + cur_node->g_val + ((i<4)? 10 : 14);    // Balance cost between 4 & 8 directions
-            
+            // int total_cost = against_wall_cost(cur_node->grid) + cur_node->g_val + ((i<4)? 10 : 14);    // Balance cost between 4 & 8 directions
+            int total_cost = against_wall_cost(cur_node->grid) + cur_node->g_val;
+
             Node* successor = find_node(open_set, tmp_grid);
             if(successor == nullptr){
                 successor = new Node(tmp_grid, cur_node);           // Expand a new node from current node

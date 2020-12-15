@@ -24,6 +24,7 @@
 
 static const double kMaxDisOfRobotTrackedPoint = 2.0;
 static const double kThresPercentageOfArrival = 0.7;
+static const int kThresObstacleDangerCost = 40;
 
 
 template<class ForwardIterator>
@@ -44,8 +45,8 @@ public:
     void localmap_cb(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr);
     void footprint_cb(const geometry_msgs::PolygonStamped::ConstPtr &footprint_msg_ptr);
     void progress_cb(const std_msgs::Float32::ConstPtr &msg_ptr);
-    int get_local_avg_cost(std::vector<int8_t> vec, int map_width, int map_height, int target_idx);
-    int get_local_max_cost(std::vector<int8_t> vec, int map_width, int map_height, int target_idx);
+    int get_local_avg_cost(std::vector<int8_t> vec, double map_resolution, int map_width, int map_height, int target_idx);
+    int get_local_max_cost(std::vector<int8_t> vec, double map_resolution, int map_width, int map_height, int target_idx);
     geometry_msgs::Point generate_sub_goal(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, tf::StampedTransform tf_base2odom);
     bool is_footprint_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, geometry_msgs::PolygonStamped::ConstPtr &footprint_ptr);
     bool is_path_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, nav_msgs::Path::Ptr path_ptr, tf::StampedTransform tf_base2odom);
@@ -219,7 +220,7 @@ bool AstarPathfindingNode::is_path_safe(const nav_msgs::OccupancyGrid::ConstPtr 
         int map_x = std::round((vec_transformed.getX() - map_origin_x) / map_resolution);
         int map_y = std::round((vec_transformed.getY() - map_origin_y) / map_resolution);
         int idx = map_y * map_width + map_x;
-        if(map_msg_ptr->data[idx] >= 60 || map_msg_ptr->data[idx] < 0) {
+        if(map_msg_ptr->data[idx] >= kThresObstacleDangerCost || map_msg_ptr->data[idx] < 0) {
             return false;
         }
     }
@@ -253,18 +254,23 @@ geometry_msgs::Point AstarPathfindingNode::generate_sub_goal(const nav_msgs::Occ
         double theta_from_yaxis = M_PI / 18 * i;
         int max_distance_idx = std::round(prefer_subgoal_distance / distance_resolution);
         double tmp_dis;
+        double obstacle_cost;
         for(int j = 3; j <= max_distance_idx; j++) {
             tmp_dis = distance_resolution * j;
             int map_x = std::round((tmp_dis * std::sin(theta_from_yaxis) - map_origin_x + path_start_offsetx_) / map_resolution);
             int map_y = std::round((tmp_dis * std::cos(theta_from_yaxis) - map_origin_y + path_start_offsety_) / map_resolution);
             int idx = map_y * map_width + map_x;
-            if(get_local_max_cost((map_msg_ptr->data), map_width, map_height, idx) > 50 || idx >= map_width * map_height || map_msg_ptr->data[idx] == -1) {
+            obstacle_cost = get_local_max_cost(map_msg_ptr->data, map_resolution, map_width, map_height, idx);
+            if(obstacle_cost > kThresObstacleDangerCost) {
+            // if( > 50 || idx >= map_width * map_height || map_msg_ptr->data[idx] == -1) {
                 tmp_dis -= distance_resolution * 3;
                 break;
             }
         }
         // Calculate score
-        double score = tmp_dis / prefer_subgoal_distance * std::sin(theta_from_yaxis);
+        // double score = tmp_dis / prefer_subgoal_distance * std::sin(theta_from_yaxis) * (1.0 - obstacle_cost / 100.0);
+        double score = std::sin(theta_from_yaxis) + (1.0 - obstacle_cost / 100.0 * 2) + tmp_dis / prefer_subgoal_distance * 2;
+        // double score = (1.0 - obstacle_cost / 100.0);
         candidate_score_list.push_back(score);
 
         // Visualization
@@ -276,6 +282,28 @@ geometry_msgs::Point AstarPathfindingNode::generate_sub_goal(const nav_msgs::Occ
         pt.x += tmp_dis * std::sin(theta_from_yaxis);
         pt.y += tmp_dis * std::cos(theta_from_yaxis);
         mkr_subgoal_candidate_.points.push_back(pt);
+
+        // candidate score
+        visualization_msgs::Marker mkr_candidate_score;
+        mkr_candidate_score.header.frame_id = "base_link";
+        mkr_candidate_score.header.stamp = ros::Time();
+        mkr_candidate_score.ns = "candidate_score";
+        mkr_candidate_score.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+        mkr_candidate_score.action = visualization_msgs::Marker::ADD;
+        mkr_candidate_score.pose.orientation.w = 1.0;
+        mkr_candidate_score.pose.position.x = pt.x;
+        mkr_candidate_score.pose.position.y = pt.y;
+        mkr_candidate_score.pose.position.z = 0.4;
+        mkr_candidate_score.id = i;
+        mkr_candidate_score.scale.z = 0.2;
+        mkr_candidate_score.color.a = 0.2; // Don't forget to set the alpha!
+        mkr_candidate_score.color.r = 1.0;
+        mkr_candidate_score.color.g = 1.0;
+        mkr_candidate_score.color.b = 1.0;
+        mkr_candidate_score.text = std::to_string(score);
+        mkr_candidate_score.lifetime = ros::Duration(4.0);
+        mrk_array.markers.push_back(mkr_candidate_score);    
+
     }
     mkr_subgoal_candidate_.header.stamp = ros::Time();
     mrk_array.markers.push_back(mkr_subgoal_candidate_);    
@@ -302,11 +330,12 @@ geometry_msgs::Point AstarPathfindingNode::generate_sub_goal(const nav_msgs::Occ
 }
 
 
-int AstarPathfindingNode::get_local_max_cost(std::vector<int8_t> vec, int map_width, int map_height, int target_idx) {
-    int kernel_size = 5;
+int AstarPathfindingNode::get_local_max_cost(std::vector<int8_t> vec, double map_resolution, int map_width, int map_height, int target_idx) {
+    int kernel_size = int(std::floor(1.0 / map_resolution));
+    kernel_size = kernel_size + (kernel_size % 2 == 0);
     int bound = kernel_size / 2;
     int cost = 0;
-    int max_map_idx = map_width * map_height;
+    int max_map_idx = map_width * map_height - 1;
 
     for(int y = -bound; y <= bound; y++) {
         for (int x = -bound; x <= bound; x++) {
@@ -322,11 +351,12 @@ int AstarPathfindingNode::get_local_max_cost(std::vector<int8_t> vec, int map_wi
 }
 
 
-int AstarPathfindingNode::get_local_avg_cost(std::vector<int8_t> vec, int map_width, int map_height, int target_idx) {
-    int kernel_size = 17;
+int AstarPathfindingNode::get_local_avg_cost(std::vector<int8_t> vec, double map_resolution, int map_width, int map_height, int target_idx) {
+    int kernel_size = int(std::floor(1.0 / map_resolution));
+    kernel_size = kernel_size + (kernel_size % 2 == 0);
     int bound = kernel_size / 2;
     int cost = 0;
-    int max_map_idx = map_width * map_height;
+    int max_map_idx = map_width * map_height - 1;
 
     for(int y = -bound; y <= bound; y++) {
         for (int x = -bound; x <= bound; x++) {
