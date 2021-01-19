@@ -56,7 +56,7 @@ public:
 
     // TF listener
     tf::TransformListener* tflistener_ptr_;
-    tf::StampedTransform tf_base2laser_;    
+    tf::StampedTransform tf_laser2base_;    
 
     // Inflation filter kernel
     vector<vector<int8_t> > inflation_kernel_;
@@ -103,7 +103,7 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
         tflistener_ptr_->waitForTransform(localmap_frameid_, scan_src_frameid,
                                     ros::Time(), ros::Duration(10.0));
         tflistener_ptr_->lookupTransform(localmap_frameid_, scan_src_frameid,
-                                    ros::Time(), tf_base2laser_);
+                                    ros::Time(), tf_laser2base_);
         ROS_INFO("Done.");
     }
     catch (tf::TransformException ex){
@@ -247,7 +247,7 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
     PointCloudXYZPtr cloud_transformed(new PointCloudXYZ);
     projector_.projectLaser(laser_msg, cloud_msg);
     pcl::fromROSMsg(cloud_msg, *cloud_raw);
-    pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_base2laser_);
+    pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_laser2base_);
 
     // Apply cropbox filter
     box_filter_.setInputCloud(cloud_transformed);
@@ -296,12 +296,12 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
     for(int i = 0; i < msg_ptr->trks_list.size(); i++) {
         // Convert object pose from laser coordinate to base coordinate
         tf::Vector3 pt_laser(msg_ptr->trks_list[i].x, msg_ptr->trks_list[i].y, 0);
-        tf::Vector3 pt_base = tf_base2laser_.getBasis() * pt_laser + tf_base2laser_.getOrigin();
+        tf::Vector3 pt_base = tf_laser2base_.getBasis() * pt_laser + tf_laser2base_.getOrigin();
         tf::Quaternion q;
         q.setRPY(0, 0, msg_ptr->trks_list[i].yaw);
         double yaw, pitch, roll;
         tf::Matrix3x3 mat(q);
-        mat = tf_base2laser_.getBasis() * mat;
+        mat = tf_laser2base_.getBasis() * mat;
         mat.getEulerYPR(yaw, pitch, roll);
 
         double speed = std::hypot(msg_ptr->trks_list[i].vx, msg_ptr->trks_list[i].vy);
@@ -339,7 +339,7 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
     PointCloudXYZPtr cloud_transformed(new PointCloudXYZ);
     projector_.projectLaser(laser_msg, cloud_msg);
     pcl::fromROSMsg(cloud_msg, *cloud_raw);
-    pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_base2laser_);
+    pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_laser2base_);
 
     // Apply cropbox filter
     box_filter_.setInputCloud(cloud_transformed);

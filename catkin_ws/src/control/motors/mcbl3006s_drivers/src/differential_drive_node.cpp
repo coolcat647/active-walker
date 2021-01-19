@@ -240,7 +240,7 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     odom_tf_msg.transform.translation.x = robot_x_;
     odom_tf_msg.transform.translation.y = robot_y_;
     odom_tf_msg.transform.rotation = odom_quat;
-    odom_broadcaster_.sendTransform(odom_tf_msg);
+    // odom_broadcaster_.sendTransform(odom_tf_msg);
 
     nav_msgs::Odometry odom_msg;
     odom_msg.header.stamp = current_time;
@@ -248,12 +248,24 @@ void DiffDriveNode::timer_cb(const ros::TimerEvent& event) {
     odom_msg.pose.pose.position.x = robot_x_;
     odom_msg.pose.pose.position.y = robot_y_;
     odom_msg.pose.pose.orientation = odom_quat;
-    odom_msg.pose.covariance[0]  = 1e2;    // covariance of x 
-    odom_msg.pose.covariance[7]  = 1e2;    // covariance of y
-    odom_msg.pose.covariance[35] = 1e2;    // covariance of yaw
-    odom_msg.pose.covariance[14] = 1e10;    // yaw x axis
-    odom_msg.pose.covariance[21] = 1e10;    // yaw y axis
-    odom_msg.pose.covariance[28] = 1e10;    // yaw z axis
+    // odom_msg.pose.covariance[0]  = 1e2;    // covariance of x 
+    // odom_msg.pose.covariance[7]  = 1e2;    // covariance of y
+    // odom_msg.pose.covariance[35] = 1e2;    // covariance of yaw
+    // odom_msg.pose.covariance[14] = 1e10;    // yaw x axis
+    // odom_msg.pose.covariance[21] = 1e10;    // yaw y axis
+    // odom_msg.pose.covariance[28] = 1e10;    // yaw z axis
+
+    odom_msg.pose.covariance[0]  = 2e-1;    // covariance of x 
+    odom_msg.pose.covariance[7]  = 2e-1;    // covariance of y
+    // odom_msg.pose.covariance[5]  = 1e2;    // covariance of xxx 
+    // odom_msg.pose.covariance[11]  = 1e2;    // covariance of yyy
+
+    odom_msg.pose.covariance[35] = 1e0;    // covariance of yaw
+    odom_msg.pose.covariance[30] = 1e-2;    // covariance of yaw
+    odom_msg.pose.covariance[31] = 1e-2;    // covariance of yaw
+    // odom_msg.pose.covariance[14] = 1e0;    // yaw x axis
+    // odom_msg.pose.covariance[21] = 1e0;    // yaw y axis
+    // odom_msg.pose.covariance[28] = 1e10;    // yaw z axis
     odom_msg.twist.twist.linear.x = real_v;
     odom_msg.twist.twist.angular.z = real_omega;
 

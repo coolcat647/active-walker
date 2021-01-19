@@ -39,7 +39,7 @@ public:
     Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh);
     static void sigint_cb(int sig);
     void apply_butterworth_filter(std::vector<int8_t> &vec, int map_width, int map_height, int target_idx, int peak_value);
-    void asymmetric_gaussian_filter(std::vector<int8_t> &vec, double map_resolution, int map_width, int map_height, int target_idx, double target_yaw, double target_speed, int peak_value);
+    void apply_asymmetric_gaussian_filter(std::vector<int8_t> &vec, double map_resolution, int map_width, int map_height, int target_idx, double target_yaw, double target_speed, int peak_value);
     void butterworth_filter_generate(double filter_radius, int filter_order, double map_resolution, int peak_value);
     void scan_cb(const sensor_msgs::LaserScan &laser_msg);
     void trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_ptr);
@@ -57,7 +57,7 @@ public:
 
     // TF listener
     tf::TransformListener* tflistener_ptr_;
-    tf::StampedTransform tf_base2laser_;    
+    tf::StampedTransform tf_laser2base_;    
 
     // Inflation filter kernel
     std::vector<std::vector<int8_t> > inflation_kernel_;
@@ -103,7 +103,7 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
         tflistener_ptr_->waitForTransform(localmap_frameid_, scan_src_frameid,
                                     ros::Time(), ros::Duration(10.0));
         tflistener_ptr_->lookupTransform(localmap_frameid_, scan_src_frameid,
-                                    ros::Time(), tf_base2laser_);
+                                    ros::Time(), tf_laser2base_);
         ROS_INFO("Done.");
     }
     catch (tf::TransformException ex){
@@ -170,7 +170,7 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
 }
 
 
-void Scan2LocalmapNode::asymmetric_gaussian_filter(std::vector<int8_t> &vec, double map_resolution, int map_width, int map_height, int target_idx, double target_yaw, double target_speed, int peak_value) {
+void Scan2LocalmapNode::apply_asymmetric_gaussian_filter(std::vector<int8_t> &vec, double map_resolution, int map_width, int map_height, int target_idx, double target_yaw, double target_speed, int peak_value) {
     // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
     // Asymmetric Gaussian Filter kernel
@@ -233,9 +233,9 @@ void Scan2LocalmapNode::asymmetric_gaussian_filter(std::vector<int8_t> &vec, dou
             // if(vec[op_idx] < 0) continue;                                 // do not apply filter out of laser range
             if(op_kernel_val == 0 || vec[op_idx] >= op_kernel_val) continue;
             else if(op_idx < 0 || op_idx > max_map_idx) continue;           // upper and bottom bound
-            else if(abs((op_idx % map_width) - (target_idx % map_width)) > bound) continue;  // left and right bound
+            else if(abs((op_idx % map_width) - (target_idx % map_width)) >= bound) continue;  // left and right bound
             else{
-                int tmp_val = op_kernel_val + vec[op_idx];
+                int tmp_val = (int)op_kernel_val + vec[op_idx];
                 vec[op_idx] = (tmp_val > peak_value)? peak_value : tmp_val;
             }
         }
@@ -247,6 +247,20 @@ void Scan2LocalmapNode::asymmetric_gaussian_filter(std::vector<int8_t> &vec, dou
 
 
 void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_ptr) {
+
+    // Get the transformation from base to 
+    tf::StampedTransform tf_trk2base;
+    try{
+        tflistener_ptr_->waitForTransform(localmap_frameid_, msg_ptr->header.frame_id,
+                                    ros::Time(), ros::Duration(0.1));
+        tflistener_ptr_->lookupTransform(localmap_frameid_, msg_ptr->header.frame_id,
+                                    ros::Time(), tf_trk2base);
+    }
+    catch (tf::TransformException ex){
+        ROS_ERROR("\nCannot get TF from odom to %s: %s. Aborting...", localmap_frameid_.c_str(), ex.what());
+        exit(-1);
+    }
+
     // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
     sensor_msgs::LaserScan laser_msg = msg_ptr->scan;
 
@@ -256,7 +270,7 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
     PointCloudXYZPtr cloud_transformed(new PointCloudXYZ);
     projector_.projectLaser(laser_msg, cloud_msg);
     pcl::fromROSMsg(cloud_msg, *cloud_raw);
-    pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_base2laser_);
+    pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_laser2base_);
 
     // Apply cropbox filter
     box_filter_.setInputCloud(cloud_transformed);
@@ -273,35 +287,37 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
     int map_limit = map_width * map_height - 1;
 
     // Static obstacle inflation
-    for(int i = 0; i < cloud_transformed->points.size(); i++) {
-        double laser_x = cloud_transformed->points[i].x;
-        double laser_y = cloud_transformed->points[i].y;
-        if(fabs(laser_x) > map_width * resolution / 2)
-            continue;
-        else if(fabs(laser_y) > map_height * resolution / 2)
-            continue;
+    // for(int i = 0; i < cloud_transformed->points.size(); i++) {
+    //     double laser_x = cloud_transformed->points[i].x;
+    //     double laser_y = cloud_transformed->points[i].y;
+    //     if(fabs(laser_x) > map_width * resolution / 2)
+    //         continue;
+    //     else if(fabs(laser_y) > map_height * resolution / 2)
+    //         continue;
 
-        int map_x = std::floor((laser_x - map_origin_x) / resolution);
-        int map_y = std::floor((laser_y - map_origin_y) / resolution);
-        int idx = map_y * map_width + map_x;
+    //     int map_x = std::floor((laser_x - map_origin_x) / resolution);
+    //     int map_y = std::floor((laser_y - map_origin_y) / resolution);
+    //     int idx = map_y * map_width + map_x;
         
-        if((0 < idx) && (idx < map_limit)){
-            if(localmap_ptr_->data[idx] == 100)
-                continue;
-            apply_butterworth_filter(localmap_ptr_->data, map_width, map_height, idx, 100);
-        }
-    }
+    //     if((0 < idx) && (idx < map_limit)){
+    //         if(localmap_ptr_->data[idx] == 100)
+    //             continue;
+    //         apply_butterworth_filter(localmap_ptr_->data, map_width, map_height, idx, 100);
+    //     }
+    // }
 
     // Proxemics generation
     for(int i = 0; i < msg_ptr->trks_list.size(); i++) {
         // Convert object pose from laser coordinate to base coordinate
         tf::Vector3 pt_laser(msg_ptr->trks_list[i].x, msg_ptr->trks_list[i].y, 0);
-        tf::Vector3 pt_base = tf_base2laser_.getBasis() * pt_laser + tf_base2laser_.getOrigin();
+        // tf::Vector3 pt_base = tf_laser2base_.getBasis() * pt_laser + tf_laser2base_.getOrigin();
+        tf::Vector3 pt_base = tf_trk2base.getBasis() * pt_laser + tf_trk2base.getOrigin();
         tf::Quaternion q;
         q.setRPY(0, 0, msg_ptr->trks_list[i].yaw);
         double yaw, pitch, roll;
         tf::Matrix3x3 mat(q);
-        mat = tf_base2laser_.getBasis() * mat;
+        // mat = tf_laser2base_.getBasis() * mat;
+        mat = tf_trk2base.getBasis() * mat;
         mat.getEulerYPR(yaw, pitch, roll);
 
         double speed = std::hypot(msg_ptr->trks_list[i].vx, msg_ptr->trks_list[i].vy);
@@ -313,7 +329,7 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
 
         // if((0 < idx) && (idx < map_limit) && (speed > 0.1)){
         if((0 < idx) && (idx < map_limit)){
-            asymmetric_gaussian_filter(localmap_ptr_->data, resolution, map_width, map_height, idx, yaw, speed, 100);
+            apply_asymmetric_gaussian_filter(localmap_ptr_->data, resolution, map_width, map_height, idx, yaw, speed * 1.2, 100);
         }
     }
     
@@ -400,7 +416,7 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
     PointCloudXYZPtr cloud_transformed(new PointCloudXYZ);
     projector_.projectLaser(laser_msg, cloud_msg);
     pcl::fromROSMsg(cloud_msg, *cloud_raw);
-    pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_base2laser_);
+    pcl_ros::transformPointCloud(*cloud_raw, *cloud_transformed, tf_laser2base_);
 
     // Apply cropbox filter
     box_filter_.setInputCloud(cloud_transformed);

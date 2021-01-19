@@ -2,7 +2,7 @@
 <launch>
     <arg name="robot_namespace" default="active_walker" />
     <arg name="inflation_radius" default="0.4" />
-    <arg name="map_resolution" default="0.1" />
+    <arg name="map_resolution" default="0.2" />
     <arg name="localmap_frameid" default="base_link" />
     <arg name="scan_src_frameid" default="laser_link" />
     <arg name="use_agf" default="true" />

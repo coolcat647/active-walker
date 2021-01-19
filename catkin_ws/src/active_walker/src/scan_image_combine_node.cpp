@@ -159,7 +159,9 @@ public:
     boost::shared_ptr<MySynchronizer> sync_;
 
     // Object list
-    std::vector<ObjInfo> obj_list;
+    std::vector<ObjInfo> obj_list_;
+
+    bool flag_det_vis_;
 };
 
 
@@ -175,13 +177,16 @@ ScanImageCombineNode::ScanImageCombineNode(ros::NodeHandle nh, ros::NodeHandle p
     std::string yolo_srv_name = "yolov4_node/yolo_detect";
     ros::param::param<std::string>("~scan_topic", scan_topic, "scan");
     ros::param::param<std::string>("~img_topic", img_topic, "usb_cam/image_raw"); 
-    ros::param::param<std::string>("~caminfo_topic", caminfo_topic, "usb_cam/camera_info"); 
+    ros::param::param<std::string>("~caminfo_topic", caminfo_topic, "usb_cam/camera_info");
+    ros::param::param<bool>("~flag_det_vis", flag_det_vis_, false);
 
     // ROS publisher & subscriber & message filter
     pub_combined_image_ = nh_.advertise<sensor_msgs::Image>("debug_reprojection", 1);
-    pub_marker_array_ = nh.advertise<visualization_msgs::MarkerArray>("obj_marker", 1);
-    // pub_debug_mrk_array_ = nh.advertise<visualization_msgs::MarkerArray>("debug_marker", 1);
-    pub_colored_pc_ = nh.advertise<sensor_msgs::PointCloud2>("colored_pc", 1);
+    if(flag_det_vis_) {
+        pub_marker_array_ = nh.advertise<visualization_msgs::MarkerArray>("obj_marker", 1);
+        // pub_debug_mrk_array_ = nh.advertise<visualization_msgs::MarkerArray>("debug_marker", 1);
+        pub_colored_pc_ = nh.advertise<sensor_msgs::PointCloud2>("colored_pc", 1);
+    }
     pub_detection3d_ = nh.advertise<walker_msgs::Det3DArray>("det3d_result", 1);
     scan_sub_.subscribe(nh_, scan_topic, 1);
     image_sub_.subscribe(nh_, img_topic, 1);
@@ -392,7 +397,7 @@ cv::Point2d ScanImageCombineNode::point_laser2pixel(double x_from_laser, double 
 
 void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_ptr, const sensor_msgs::LaserScan::ConstPtr &laser_msg_ptr){
     // Object list init
-    obj_list.clear();
+    obj_list_.clear();
     // Visualization msg
     visualization_msgs::MarkerArray marker_array;
     visualization_msgs::MarkerArray debug_mrk_array;
@@ -410,7 +415,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     double kImageWidth = cv_ptr->image.cols;
     double kImageHeight = cv_ptr->image.rows;
 
-    // Collect all interest classes to obj_list
+    // Collect all interest classes to obj_list_
     // char det_str[200] = {0};
     std::vector<walker_msgs::BBox2D> boxes = srv.response.result.boxes;
     for(int i = 0; i < boxes.size(); i++) {
@@ -425,7 +430,7 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
             // Prepare key vector for linear assignment later
             obj_info.key_vector.x = boxes[i].center.x - kImageWidth / 2;
             obj_info.key_vector.y = -(boxes[i].center.y - kImageHeight);
-            obj_list.push_back(obj_info);
+            obj_list_.push_back(obj_info);
 
             // sprintf(det_str, "%s%.2f, ", det_str, std::atan2(obj_info.key_vector.y, obj_info.key_vector.x) / M_PI * 180.0);
         }
@@ -581,14 +586,14 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     
 
     // Prepare cost matrix for linear assignment
-    if(obj_list.size() != 0 && laser_clusters_list.size() != 0) {
-        std::vector< std::vector<double> > cost_matrix(obj_list.size(), std::vector<double>(laser_clusters_list.size(), 0.0));
-        for(int i = 0; i < obj_list.size(); i++){
+    if(obj_list_.size() != 0 && laser_clusters_list.size() != 0) {
+        std::vector< std::vector<double> > cost_matrix(obj_list_.size(), std::vector<double>(laser_clusters_list.size(), 0.0));
+        for(int i = 0; i < obj_list_.size(); i++){
             for(int j = 0; j < laser_clusters_list.size(); j++){
                 // Consider the distance 
                 double distance_cost = calculate_distance_cost(laser_clusters_list[j].location);
                 
-                double similarity = cosine_similarity_2d(obj_list[i].key_vector, laser_clusters_list[j].key_vec_imgspace);
+                double similarity = cosine_similarity_2d(obj_list_[i].key_vector, laser_clusters_list[j].key_vec_imgspace);
                 double orientation_cost = (similarity >= kThresholdOfSimilarity)? 1.0 - similarity : 100.0; 
                 cost_matrix[i][j] = distance_cost + orientation_cost;
             }
@@ -600,40 +605,40 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
         double cost = HungAlgo.Solve(cost_matrix, assignment);
         for (unsigned int i = 0; i < cost_matrix.size(); i++){
             if(assignment[i] != -1 && cost_matrix[i][assignment[i]] < 100)     // -1 means there is no assignment solution for this item 
-                obj_list[i].cloud = laser_clusters_list[assignment[i]].cloud;
+                obj_list_[i].cloud = laser_clusters_list[assignment[i]].cloud;
         }
 
-        for(int i = 0; i < obj_list.size(); i++) {
-            if(obj_list[i].cloud->points.size() >= 1){
+        for(int i = 0; i < obj_list_.size(); i++) {
+            if(obj_list_[i].cloud->points.size() >= 1){
 
                 // Find the center of each object
                 pcl::PointXYZ min_point, max_point;
                 Eigen::Vector3f center;
-                pcl::getMinMax3D(*(obj_list[i].cloud), min_point, max_point);
+                pcl::getMinMax3D(*(obj_list_[i].cloud), min_point, max_point);
                 center = (min_point.getVector3fMap() + max_point.getVector3fMap()) / 2.0;
-                obj_list[i].location.x = center[0];
-                obj_list[i].location.y = center[1];
+                obj_list_[i].location.x = center[0];
+                obj_list_[i].location.y = center[1];
 
                 // Estimate the object radius
                 double tmp_r1 = sqrt(pow(max_point.x - center[0], 2) + pow(max_point.y - center[1], 2));
                 double tmp_r2 = sqrt(pow(min_point.x - center[0], 2) + pow(min_point.y - center[1], 2));
-                obj_list[i].radius = std::max(tmp_r1, tmp_r2);
+                obj_list_[i].radius = std::max(tmp_r1, tmp_r2);
 
                 // Recover object dimension from image
-                tf::Vector3 lefttop_laserframe = point_pixel2laser(obj_list[i].box.center.x - obj_list[i].box.size_x / 2, 
-                                                                    obj_list[i].box.center.y - obj_list[i].box.size_y / 2,
-                                                                    obj_list[i].location.x);
-                tf::Vector3 righttop_laserframe = point_pixel2laser(obj_list[i].box.center.x + obj_list[i].box.size_x / 2, 
-                                                                    obj_list[i].box.center.y - obj_list[i].box.size_y / 2,
-                                                                    obj_list[i].location.x);
-                tf::Vector3 rightbottom_laserframe = point_pixel2laser(obj_list[i].box.center.x + obj_list[i].box.size_x / 2, 
-                                                                    obj_list[i].box.center.y + obj_list[i].box.size_y / 2,
-                                                                    obj_list[i].location.x);
+                tf::Vector3 lefttop_laserframe = point_pixel2laser(obj_list_[i].box.center.x - obj_list_[i].box.size_x / 2, 
+                                                                    obj_list_[i].box.center.y - obj_list_[i].box.size_y / 2,
+                                                                    obj_list_[i].location.x);
+                tf::Vector3 righttop_laserframe = point_pixel2laser(obj_list_[i].box.center.x + obj_list_[i].box.size_x / 2, 
+                                                                    obj_list_[i].box.center.y - obj_list_[i].box.size_y / 2,
+                                                                    obj_list_[i].location.x);
+                tf::Vector3 rightbottom_laserframe = point_pixel2laser(obj_list_[i].box.center.x + obj_list_[i].box.size_x / 2, 
+                                                                    obj_list_[i].box.center.y + obj_list_[i].box.size_y / 2,
+                                                                    obj_list_[i].location.x);
                 double h_from_image = fabs(rightbottom_laserframe.getZ() - righttop_laserframe.getZ());
                 double w_from_image = fabs(lefttop_laserframe.getY() - righttop_laserframe.getY());
-                // tf::Vector3 center_from_image = point_pixel2laser(obj_list[i].box.center.x, 
-                //                                                     obj_list[i].box.center.y,
-                //                                                     obj_list[i].location.x);
+                // tf::Vector3 center_from_image = point_pixel2laser(obj_list_[i].box.center.x, 
+                //                                                     obj_list_[i].box.center.y,
+                //                                                     obj_list_[i].location.x);
                 double radius_from_image = fabs(lefttop_laserframe.getY() - righttop_laserframe.getY()) / 2;
 
                 // Skip the match result which has an unreasonable height
@@ -641,51 +646,53 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
 
                 // Pack the custom ros package
                 walker_msgs::Det3D det_msg;
-                det_msg.x = obj_list[i].location.x;
-                det_msg.y = obj_list[i].location.y;
+                det_msg.x = obj_list_[i].location.x;
+                det_msg.y = obj_list_[i].location.y;
                 det_msg.z = 0;
                 det_msg.yaw = 0;
                 det_msg.radius = radius_from_image;
                 det_msg.h = h_from_image;           // Additional
                 det_msg.w = w_from_image;           // Additional
                 det_msg.l = w_from_image;           // Additional
-                det_msg.confidence = obj_list[i].box.score;
-                det_msg.class_name = obj_list[i].box.class_name;
-                det_msg.class_id = obj_list[i].box.id;
+                det_msg.confidence = obj_list_[i].box.score;
+                det_msg.class_name = obj_list_[i].box.class_name;
+                det_msg.class_id = obj_list_[i].box.id;
                 detection_array.dets_list.push_back(det_msg);
 
                 // Visualization
-                visualization_msgs::Marker marker;
-                marker.header.frame_id = laser_msg_ptr->header.frame_id;
-                marker.header.stamp = ros::Time();
-                marker.ns = "detection_result";
-                marker.id = i;
-                marker.type = visualization_msgs::Marker::CUBE;
-                marker.lifetime = ros::Duration(kLifetimeOfMarker);
-                // marker.lifetime = ros::Duration(10.0);
-                marker.action = visualization_msgs::Marker::ADD;
-                marker.pose.position.x = obj_list[i].location.x;
-                marker.pose.position.y = obj_list[i].location.y;
-                marker.pose.position.z = rightbottom_laserframe.getZ() * std::cos(camera_mount_elevation_angle_);
-                marker.pose.orientation.x = 0.0;
-                marker.pose.orientation.y = 0.0;
-                marker.pose.orientation.z = 0.0;
-                marker.pose.orientation.w = 1.0;
-                // marker.scale.x = marker.scale.y = obj_list[i].radius * 2;
-                marker.scale.x = w_from_image;
-                marker.scale.y = w_from_image;
-                marker.scale.z = h_from_image;
-                marker.color.a = 0.4;
-                marker.color.g = 1.0;
-                marker_array.markers.push_back(marker);
+                if(flag_det_vis_) {
+                    visualization_msgs::Marker marker;
+                    marker.header.frame_id = laser_msg_ptr->header.frame_id;
+                    marker.header.stamp = ros::Time();
+                    marker.ns = "detection_result";
+                    marker.id = i;
+                    marker.type = visualization_msgs::Marker::CUBE;
+                    marker.lifetime = ros::Duration(kLifetimeOfMarker);
+                    // marker.lifetime = ros::Duration(10.0);
+                    marker.action = visualization_msgs::Marker::ADD;
+                    marker.pose.position.x = obj_list_[i].location.x;
+                    marker.pose.position.y = obj_list_[i].location.y;
+                    marker.pose.position.z = rightbottom_laserframe.getZ() * std::cos(camera_mount_elevation_angle_);
+                    marker.pose.orientation.x = 0.0;
+                    marker.pose.orientation.y = 0.0;
+                    marker.pose.orientation.z = 0.0;
+                    marker.pose.orientation.w = 1.0;
+                    // marker.scale.x = marker.scale.y = obj_list_[i].radius * 2;
+                    marker.scale.x = w_from_image;
+                    marker.scale.y = w_from_image;
+                    marker.scale.z = h_from_image;
+                    marker.color.a = 0.4;
+                    marker.color.g = 1.0;
+                    marker_array.markers.push_back(marker);
+                }
             }
         }
     }
     
     // Publish visualization topics
-    if(pub_marker_array_.getNumSubscribers() > 0)
+    if(flag_det_vis_ && pub_marker_array_.getNumSubscribers() > 0)
         pub_marker_array_.publish(marker_array);
-    if(pub_colored_pc_.getNumSubscribers() > 0) {
+    if(flag_det_vis_ && pub_colored_pc_.getNumSubscribers() > 0) {
         sensor_msgs::PointCloud2 colored_cloud_msg;
         pcl::toROSMsg(*cloud_colored, colored_cloud_msg);
         colored_cloud_msg.header.frame_id = "laser_link";
@@ -712,10 +719,10 @@ void ScanImageCombineNode::img_scan_cb(const cv_bridge::CvImage::ConstPtr &cv_pt
     }
 
     // Show object infomation
-    // if(obj_list.size() > 0){
+    // if(obj_list_.size() > 0){
     //     std::cout << "Prediction result:" << std::endl;
-    //     for(int i = 0; i < obj_list.size(); i++) {
-    //         std::cout << obj_list[i].box.class_name << ", cloud size: " << obj_list[i].cloud->points.size() << std::endl; 
+    //     for(int i = 0; i < obj_list_.size(); i++) {
+    //         std::cout << obj_list_[i].box.class_name << ", cloud size: " << obj_list_[i].cloud->points.size() << std::endl; 
     //     }
     //     std::cout << "\n===================" << std::endl;
     // }
