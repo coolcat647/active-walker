@@ -5,7 +5,7 @@
     <arg name="map_resolution" default="0.2" />
     <arg name="localmap_frameid" default="base_link" />
     <arg name="scan_src_frameid" default="laser_link" />
-    <arg name="agf_type" default="-1" doc="-1 ->only scan;  0 ->original agf;  1 ->socially-aware agf"/>
+    <arg name="agf_type" default="0" doc="-1 ->only scan;  0 ->original agf;  1 ->socially-aware agf"/>
 
     <arg name="solver_timeout_ms" default="100.0" />
     <arg name="subgoal_timer_interval" default="0.25" />

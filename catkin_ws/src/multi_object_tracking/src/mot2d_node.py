@@ -162,12 +162,12 @@ class MultiObjectTrackingNode(object):
                 marker.action = Marker.ADD
                 marker.scale.x = d[2] * 2
                 marker.scale.y = d[2] * 2
-                marker.scale.z = 1.0
+                marker.scale.z = 1.6
                 marker.color.b = 1.0
                 marker.color.a = 0.5 #The alpha of the bounding-box
                 marker.pose.position.x = d[0]
                 marker.pose.position.y = d[1]
-                marker.pose.position.z = 0.0
+                marker.pose.position.z = tf_laser2odom[2][3] # 0.0
                 q = euler_to_quaternion(0, 0, yaw)
                 marker.pose.orientation.x = q[0]
                 marker.pose.orientation.y = q[1]
