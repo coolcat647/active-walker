@@ -1,9 +1,11 @@
 <launch>
 
+        <arg name="use_gui" default="false"/>
         <!-- this file is auto generated using pedsim_gazebo_plugin pkg -->  
         
         <include file="$(find gazebo_ros)/launch/empty_world.launch">
              <arg name="world_name" value="$(find pedsim_gazebo_plugin)/worlds/social_contexts.world"/>
+             <arg name="gui" value="$(arg use_gui)"/>
          </include>
          
          <!-- this node spawn pedsim actors to gazebo once, then the plugin updates their pose -->  

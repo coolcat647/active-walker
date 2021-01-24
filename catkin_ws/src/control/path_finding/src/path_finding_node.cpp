@@ -22,7 +22,7 @@
 #include "Astar.hpp"
 
 
-static const double kMaxDisOfRobotTrackedPoint = 2.0;
+static const double kMaxDisOfRobotTrackedPoint = 1.5; // 2.0;
 static const double kThresPercentageOfArrival = 0.7;
 static const int kThresObstacleDangerCost = 40;
 
@@ -49,7 +49,8 @@ public:
     int get_local_max_cost(std::vector<int8_t> vec, double map_resolution, int map_width, int map_height, int target_idx);
     geometry_msgs::Point generate_sub_goal(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, tf::StampedTransform tf_base2odom);
     bool is_footprint_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, geometry_msgs::PolygonStamped::ConstPtr &footprint_ptr);
-    bool is_path_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, nav_msgs::Path::Ptr path_ptr, tf::StampedTransform tf_base2odom);
+    bool is_subgoal_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, nav_msgs::Path::Ptr path_ptr, tf::StampedTransform tf_odom2base);
+    bool is_path_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, nav_msgs::Path::Ptr path_ptr, tf::StampedTransform tf_odom2base);
     bool is_robot_following_path(nav_msgs::Path::Ptr path_ptr, double tracking_progress_percentage, tf::StampedTransform tf_base2odom);
 
     void timer_cb(const ros::TimerEvent&);
@@ -171,6 +172,7 @@ bool AstarPathfindingNode::is_footprint_safe(const nav_msgs::OccupancyGrid::Cons
     return true;
 }
 
+
 bool AstarPathfindingNode::is_robot_following_path(nav_msgs::Path::Ptr path_ptr, double tracking_progress_percentage, tf::StampedTransform tf_base2odom) {
     if(!path_ptr || path_ptr->poses.size() < 1)
         return false;
@@ -194,7 +196,39 @@ bool AstarPathfindingNode::is_robot_following_path(nav_msgs::Path::Ptr path_ptr,
 }
 
 
-bool AstarPathfindingNode::is_path_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, nav_msgs::Path::Ptr path_ptr, tf::StampedTransform tf_base2odom) {
+bool AstarPathfindingNode::is_subgoal_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, nav_msgs::Path::Ptr path_ptr, tf::StampedTransform tf_odom2base) {
+    double map_resolution = map_msg_ptr->info.resolution;
+    double map_origin_x = map_msg_ptr->info.origin.position.x;
+    double map_origin_y = map_msg_ptr->info.origin.position.y;
+    int map_width = map_msg_ptr->info.width;
+    int map_height = map_msg_ptr->info.height;
+
+    if(!path_ptr || path_ptr->poses.size() == 0){
+        // ROS_WARN("Empty path, skip");
+        return false;
+    }
+
+    // tf::Matrix3x3 rot_odom2base = tf_odom2base.getBasis();
+    // tf::Vector3 tras_odom2base = tf_odom2base.getOrigin();
+
+    std::vector<geometry_msgs::PoseStamped>::iterator it = path_ptr->poses.begin();
+    tf::Vector3 vec_raw(it->pose.position.x, it->pose.position.y, it->pose.position.z);
+    tf::Vector3 vec_transformed = tf_odom2base * vec_raw;
+
+    int map_x = std::round((vec_transformed.getX() - map_origin_x) / map_resolution);
+    int map_y = std::round((vec_transformed.getY() - map_origin_y) / map_resolution);
+    int idx = map_y * map_width + map_x;
+    // if(map_msg_ptr->data[idx] >= kThresObstacleDangerCost || map_msg_ptr->data[idx] < 0) {
+    //     return false;
+    // }
+    if(get_local_max_cost(map_msg_ptr->data, map_resolution, map_width, map_height, idx) >= kThresObstacleDangerCost || map_msg_ptr->data[idx] < 0) {
+        return false;
+    }
+    return true;
+}
+
+
+bool AstarPathfindingNode::is_path_safe(const nav_msgs::OccupancyGrid::ConstPtr &map_msg_ptr, nav_msgs::Path::Ptr path_ptr, tf::StampedTransform tf_odom2base) {
     double map_resolution = map_msg_ptr->info.resolution;
     double map_origin_x = map_msg_ptr->info.origin.position.x;
     double map_origin_y = map_msg_ptr->info.origin.position.y;
@@ -207,15 +241,18 @@ bool AstarPathfindingNode::is_path_safe(const nav_msgs::OccupancyGrid::ConstPtr 
     }
 
     // Transformation matrix from odom to baselink (for localmap check)
-    tf::Matrix3x3 rot_odom2base = tf_base2odom.getBasis().transpose();
-    tf::Vector3 tras_odom2base = rot_odom2base * tf_base2odom.getOrigin() * (-1);
+    // tf::Matrix3x3 rot_odom2base = tf_base2odom.getBasis().transpose();
+    // tf::Vector3 tras_odom2base = rot_odom2base * tf_base2odom.getOrigin() * (-1);
+    tf::Matrix3x3 rot_odom2base = tf_odom2base.getBasis();
+    tf::Vector3 tras_odom2base = tf_odom2base.getOrigin();
     
     for(std::vector<geometry_msgs::PoseStamped>::iterator it = path_ptr->poses.begin() ; it != path_ptr->poses.end(); ++it) {
-        tf::Matrix3x3 mat_raw(tf::Quaternion(it->pose.orientation.x, it->pose.orientation.y, it->pose.orientation.z, it->pose.orientation.w));
+        // tf::Matrix3x3 mat_raw(tf::Quaternion(it->pose.orientation.x, it->pose.orientation.y, it->pose.orientation.z, it->pose.orientation.w));
         tf::Vector3 vec_raw(it->pose.position.x, it->pose.position.y, it->pose.position.z);
 
-        tf::Matrix3x3 mat_transformed = rot_odom2base * mat_raw;
-        tf::Vector3 vec_transformed = rot_odom2base * vec_raw + tras_odom2base;
+        // tf::Matrix3x3 mat_transformed = rot_odom2base * mat_raw;
+        // tf::Vector3 vec_transformed = rot_odom2base * vec_raw + tras_odom2base;
+        tf::Vector3 vec_transformed = tf_odom2base * vec_raw;
 
         int map_x = std::round((vec_transformed.getX() - map_origin_x) / map_resolution);
         int map_y = std::round((vec_transformed.getY() - map_origin_y) / map_resolution);
@@ -247,7 +284,7 @@ geometry_msgs::Point AstarPathfindingNode::generate_sub_goal(const nav_msgs::Occ
 
     // Sub-goal candidates
     std::vector<double> candidate_score_list;
-    double prefer_subgoal_distance = 6.0;
+    double prefer_subgoal_distance = 10.0;
     double distance_resolution = 0.4; // map_resolution * 2;
 
     for(int i = 18; i >= 0; i--) {
@@ -397,20 +434,30 @@ void AstarPathfindingNode::timer_cb(const ros::TimerEvent&){
             ROS_ERROR("%s",ex.what());
             ros::Duration(1.0).sleep();
         }
+
+        tf::StampedTransform tf_odom2base(tf_base2odom.inverse(), tf_base2odom.stamp_, "/base_link", path_frame_id_);
         tf::Vector3 trans_base2odom = tf_base2odom.getOrigin();
         tf::Matrix3x3 rot_base2odom = tf_base2odom.getBasis();
 
-        if(!is_footprint_safe(localmap_ptr_, footprint_ptr_)) {
+        bool flag_footprint_safe = is_footprint_safe(localmap_ptr_, footprint_ptr_);
+        bool flag_subgoal_safe = is_subgoal_safe(localmap_ptr_, walkable_path_ptr_, tf_odom2base);
+        bool flag_path_safe = is_path_safe(localmap_ptr_, walkable_path_ptr_, tf_odom2base);
+        bool flag_robot_following_path = is_robot_following_path(walkable_path_ptr_, tracking_progress_percentage_, tf_base2odom);
+
+        if(!flag_footprint_safe) {
             ROS_ERROR("Collision detected!!");
-            walkable_path_ptr_ = nav_msgs::Path::Ptr(new nav_msgs::Path());
-            walkable_path_ptr_->header.stamp = ros::Time();
-            pub_walkable_path_.publish(walkable_path_ptr_);
+            // walkable_path_ptr_ = nav_msgs::Path::Ptr(new nav_msgs::Path());
+            // walkable_path_ptr_->header.stamp = ros::Time();
+            // pub_walkable_path_.publish(walkable_path_ptr_);
+
+            // Just publish an empty path
+            nav_msgs::Path empty_path;
+            empty_path.header.stamp = ros::Time();
+            pub_walkable_path_.publish(empty_path);
             flag_planning_busy_ = false;
             return;
         }
-        else if(tracking_progress_percentage_ < kThresPercentageOfArrival && \
-                is_path_safe(localmap_ptr_, walkable_path_ptr_, tf_base2odom) && \
-                is_robot_following_path(walkable_path_ptr_, tracking_progress_percentage_, tf_base2odom)){
+        else if(tracking_progress_percentage_ < kThresPercentageOfArrival && flag_path_safe && flag_robot_following_path){
             // no need plan, just publish old path
             walkable_path_ptr_->header.stamp = ros::Time::now();
             pub_walkable_path_.publish(walkable_path_ptr_);
@@ -422,16 +469,31 @@ void AstarPathfindingNode::timer_cb(const ros::TimerEvent&){
                 // Arrival situation
                 subgoal_pt = generate_sub_goal(localmap_ptr_, tf_base2odom);
                 ROS_WARN("Almost arrivied, generate new goal: (%.2f, %.2f)", subgoal_pt.x, subgoal_pt.y);
-            }else if(walkable_path_ptr_){
-                // Unsafe path situation
+            }else if(walkable_path_ptr_ && !flag_subgoal_safe){
+                // Unsafe subgoal situation
                 subgoal_pt = generate_sub_goal(localmap_ptr_, tf_base2odom);
-                ROS_WARN("Old path is not safe, generate new goal: (%.2f, %.2f)", subgoal_pt.x, subgoal_pt.y);
+                ROS_WARN("The old subgoal is not safe, generate new goal: (%.2f, %.2f)", subgoal_pt.x, subgoal_pt.y);
+            }else if(walkable_path_ptr_ && !flag_path_safe){
+                // Unsafe path situation
+                // Get subgoal from old path, and transform it to base frame
+                std::vector<geometry_msgs::PoseStamped>::iterator it = walkable_path_ptr_->poses.begin();
+                tf::Vector3 vec_raw(it->pose.position.x, it->pose.position.y, it->pose.position.z);
+                tf::Vector3 vec_transformed = tf_odom2base * vec_raw;
+
+                subgoal_pt.x = vec_transformed.getX();
+                subgoal_pt.y = vec_transformed.getY();
+                ROS_WARN("The old path is not safe, generate new path");
+            }else if(walkable_path_ptr_ && !flag_robot_following_path){
+                // Robot not following path situation
+                subgoal_pt = generate_sub_goal(localmap_ptr_, tf_base2odom);
+                ROS_WARN("The robot is not following the currenr path, generate new goal: (%.2f, %.2f)", subgoal_pt.x, subgoal_pt.y);
             }else{
                 // New plan situation
                 subgoal_pt = generate_sub_goal(localmap_ptr_, tf_base2odom);
-                ROS_WARN("No any old path,    start plan...");
+                ROS_WARN("There is no any old path existed, start plan...");
             }
 
+            // Goal arrival situation
             if(std::hypot(subgoal_pt.x - path_start_offsetx_, subgoal_pt.y - path_start_offsety_) < 0.2){
                 walkable_path_ptr_ = nav_msgs::Path::Ptr(new nav_msgs::Path());
                 walkable_path_ptr_->header.stamp = ros::Time::now();
@@ -477,6 +539,7 @@ void AstarPathfindingNode::timer_cb(const ros::TimerEvent&){
                 walkable_path_ptr_->header.stamp = ros::Time::now();
                 pub_walkable_path_.publish(walkable_path_ptr_);
             }
+
         }        
         // std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
         // std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
