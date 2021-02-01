@@ -284,7 +284,7 @@ geometry_msgs::Point AstarPathfindingNode::generate_sub_goal(const nav_msgs::Occ
 
     // Sub-goal candidates
     std::vector<double> candidate_score_list;
-    double prefer_subgoal_distance = 10.0;
+    double prefer_subgoal_distance = 8.0;
     double distance_resolution = 0.4; // map_resolution * 2;
 
     for(int i = 18; i >= 0; i--) {

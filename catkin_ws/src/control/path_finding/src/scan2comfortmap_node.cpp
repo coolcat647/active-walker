@@ -27,7 +27,10 @@
 #include <pcl/filters/crop_box.h>
 #include <pcl/filters/voxel_grid.h>
 
-using namespace std;
+// Custom utils
+#include "localmap_utils.hpp"
+
+// using namespace std;
 
 typedef pcl::PointCloud<pcl::PointXYZ> PointCloudXYZ;
 typedef pcl::PointCloud<pcl::PointXYZ>::Ptr PointCloudXYZPtr;
@@ -35,20 +38,10 @@ typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloudXYZRGB;
 typedef pcl::PointCloud<pcl::PointXYZRGB>::Ptr PointCloudXYZRGBPtr;
 
 
-template<class T>
-constexpr const T& clamp( const T& v, const T& lo, const T& hi )
-{
-    assert( !(hi < lo) );
-    return (v < lo) ? lo : (hi < v) ? hi : v;
-}
-
-
 class Scan2LocalmapNode {
 public:
     Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh);
     static void sigint_cb(int sig);
-    void apply_original_agf(std::vector<int8_t> &vec, double map_resolution, int map_width, int map_height, int target_idx, double target_yaw, double target_speed, int peak_value);
-    void apply_social_agf(std::vector<int8_t> &vec, double map_resolution, int map_width, int map_height, int target_idx, double target_yaw, double target_speed, int peak_value);
     void scan_cb(const sensor_msgs::LaserScan &laser_msg);
     void trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_ptr);
     void scan_cb_deprecated(const sensor_msgs::LaserScan &laser_msg);
@@ -58,7 +51,7 @@ public:
     ros::Subscriber sub_scan_;
     ros::Publisher pub_map_;
     ros::Publisher pub_footprint_;
-    string localmap_frameid_;                               // Localmap frame_id
+    std::string localmap_frameid_;                               // Localmap frame_id
     nav_msgs::OccupancyGrid::Ptr localmap_ptr_;             // Localmap msg
     geometry_msgs::PolygonStamped::Ptr footprint_ptr_;      // Robot footprint
     laser_geometry::LaserProjection projector_;             // Projector of laserscan
@@ -68,7 +61,7 @@ public:
     tf::StampedTransform tf_laser2base_;    
 
     // Inflation filter kernel
-    vector<vector<int8_t> > inflation_kernel_;
+    std::vector<std::vector<int8_t> > inflation_kernel_;
 
     // PCL Cropbox filter
     pcl::CropBox<pcl::PointXYZ> box_filter_; 
@@ -87,13 +80,13 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
     double inflation_radius;
     double map_resolution;
     double localmap_range_x, localmap_range_y;
-    string scan_src_frameid;
+    std::string scan_src_frameid;
     ros::param::param<double>("~inflation_radius", inflation_radius, 0.2);
     ros::param::param<double>("~map_resolution", map_resolution, 0.1);
     ros::param::param<double>("~localmap_range_x", localmap_range_x, 10.0);     // map_width --> x axis
     ros::param::param<double>("~localmap_range_y", localmap_range_y, 10.0);     // map_height --> y_axis
-    ros::param::param<string>("~localmap_frameid", localmap_frameid_, "base_link");
-    ros::param::param<string>("~scan_src_frameid", scan_src_frameid, "laser_link");
+    ros::param::param<std::string>("~localmap_frameid", localmap_frameid_, "base_link");
+    ros::param::param<std::string>("~scan_src_frameid", scan_src_frameid, "laser_link");
     ros::param::param<int>("~agf_type", agf_type_, -1);
     
     // ROS publishers & subscribers
@@ -178,103 +171,6 @@ Scan2LocalmapNode::Scan2LocalmapNode(ros::NodeHandle nh, ros::NodeHandle pnh): n
 }
 
 
-// Original Asymmetric Gaussian Filter
-void Scan2LocalmapNode::apply_original_agf(std::vector<int8_t> &vec, double map_resolution, int map_width, int map_height, int target_idx, double target_yaw, double target_speed, int peak_value) {
-
-    int max_proxemics_range = 5;    // +- 5 m
-    int kernel_size = max_proxemics_range * 2 / map_resolution;
-    kernel_size = (kernel_size % 2 == 0)? kernel_size + 1 : kernel_size;
-
-    int max_map_idx = map_width * map_height - 1;
-
-    // Asymmetric Gaussian Filter kernel
-    std::vector<std::vector<int8_t> > agf_kernel(kernel_size, std::vector<int8_t>(kernel_size, 0));
-    for(int i = 0; i < kernel_size; i++){
-        for(int j = 0; j < kernel_size; j++){
-            double sigma_head = std::max(target_speed, 0.5);
-            double sigma_side = sigma_head * 2 / 5;
-            double sigma_rear = sigma_head / 2;
-
-            double y = -max_proxemics_range + map_resolution * i;
-            double x = -max_proxemics_range + map_resolution * j;
-            double alpha = std::atan2(-y, -x) - target_yaw + M_PI * 0.5;
-            double alpha_prime = std::atan2(std::sin(alpha), std::cos(alpha));
-            double sigma_front = (alpha_prime > 0)? sigma_head : sigma_rear;
-            double sin_pow2 = std::pow(std::sin(target_yaw), 2);
-            double cos_pow2 = std::pow(std::cos(target_yaw), 2);
-            double sigma_side_pow2 = std::pow(sigma_side, 2);
-            double sigma_front_pow2 = std::pow(sigma_front, 2);
-            double g_a = cos_pow2 / (2 * sigma_front_pow2) + sin_pow2 / (2 * sigma_side_pow2);
-            double g_b = std::sin(2 * target_yaw) / (4 * sigma_front_pow2) - std::sin(2 * target_yaw) / (4 * sigma_side_pow2);
-            double g_c = sin_pow2 / (2 * sigma_front_pow2) + cos_pow2 / (2 * sigma_side_pow2);
-            double z = 1.0 / std::exp(g_a * std::pow(x, 2) + 2 * g_b * x * y + g_c * std::pow(y, 2)) * peak_value;
-            agf_kernel[i][j] = (uint8_t)z;
-
-            // Apply filter
-            if(agf_kernel[i][j] == 0) continue;
-            int op_idx = target_idx - map_width * (i - kernel_size / 2) - (j - kernel_size / 2);
-
-            //// if(vec[op_idx] < 0) continue;                         // do not apply filter out of laser range
-            if(op_idx < 0 || op_idx > max_map_idx) continue;           // upper and bottom bound
-            else if(abs((op_idx % map_width) - (target_idx % map_width)) >= kernel_size / 2) continue;  // left and right bound
-            else
-                vec[op_idx] = clamp(agf_kernel[i][j] + vec[op_idx], 0, peak_value);
-        }
-    }
-}
-
-
-// Socially-aware Asymmetric Gaussian Filter
-void Scan2LocalmapNode::apply_social_agf(std::vector<int8_t> &vec, double map_resolution, int map_width, int map_height, int target_idx, double target_yaw, double target_speed, int peak_value) {
-
-    int max_proxemics_range = 4;    // +- 5 m
-    int kernel_size = max_proxemics_range * 2 / map_resolution;
-    kernel_size = (kernel_size % 2 == 0)? kernel_size + 1 : kernel_size;
-
-    int max_map_idx = map_width * map_height - 1;
-
-    // Asymmetric Gaussian Filter kernel
-    std::vector<std::vector<int8_t> > agf_kernel(kernel_size, std::vector<int8_t>(kernel_size, 0));
-    for(int i = 0; i < kernel_size; i++){
-        for(int j = 0; j < kernel_size; j++){
-            double sigma_head = std::max(target_speed, 0.5);
-            // double sigma_side = sigma_head * 2 / 5;
-            double sigma_right = sigma_head * 3 / 5;
-            double sigma_left = sigma_head / 5;
-            double sigma_rear = sigma_head / 2;
-
-            double y = -max_proxemics_range + map_resolution * i;
-            double x = -max_proxemics_range + map_resolution * j;
-            double alpha = std::atan2(-y, -x) - target_yaw + M_PI * 0.5;
-            double alpha_prime = std::atan2(std::sin(alpha), std::cos(alpha));
-            double sigma_front = (alpha_prime > 0)? sigma_head : sigma_rear;
-            double alpha_side = std::atan2(std::sin(alpha + M_PI * 0.5), std::cos(alpha + M_PI * 0.5));
-            double sigma_side = (alpha_side > 0)? sigma_right : sigma_left;
-
-            double sin_pow2 = std::pow(std::sin(target_yaw), 2);
-            double cos_pow2 = std::pow(std::cos(target_yaw), 2);
-            double sigma_side_pow2 = std::pow(sigma_side, 2);
-            double sigma_front_pow2 = std::pow(sigma_front, 2);
-            double g_a = cos_pow2 / (2 * sigma_front_pow2) + sin_pow2 / (2 * sigma_side_pow2);
-            double g_b = std::sin(2 * target_yaw) / (4 * sigma_front_pow2) - std::sin(2 * target_yaw) / (4 * sigma_side_pow2);
-            double g_c = sin_pow2 / (2 * sigma_front_pow2) + cos_pow2 / (2 * sigma_side_pow2);
-            double z = 1.0 / std::exp(g_a * std::pow(x, 2) + 2 * g_b * x * y + g_c * std::pow(y, 2)) * peak_value;
-            agf_kernel[i][j] = (uint8_t)z;
-
-            // Apply filter
-            if(agf_kernel[i][j] == 0) continue;
-            int op_idx = target_idx - map_width * (i - kernel_size / 2) - (j - kernel_size / 2);
-
-            //// if(vec[op_idx] < 0) continue;                         // do not apply filter out of laser range
-            if(op_idx < 0 || op_idx > max_map_idx) continue;           // upper and bottom bound
-            else if(abs((op_idx % map_width) - (target_idx % map_width)) >= kernel_size / 2) continue;  // left and right bound
-            else
-                vec[op_idx] = clamp(agf_kernel[i][j] + vec[op_idx], 0, peak_value);
-        }
-    }
-}
-
-
 void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_ptr) {
     // Get the transformation from tracking result frame to base frame
     tf::StampedTransform tf_trk2base;
@@ -344,7 +240,6 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
     }
 
     // Proxemics generation
-    // Proxemics generation
     for(int i = 0; i < msg_ptr->trks_list.size(); i++) {
         // Convert object pose from laser coordinate to base coordinate
         tf::Vector3 pt_laser(msg_ptr->trks_list[i].x, msg_ptr->trks_list[i].y, 0);
@@ -367,10 +262,17 @@ void Scan2LocalmapNode::trk3d_cb(const walker_msgs::Trk3DArray::ConstPtr &msg_pt
 
         // Apply AGF
         if(map_x < map_width && map_y < map_height) {
-            if(agf_type_ == 1)
-                apply_social_agf(localmap_ptr_->data, resolution, map_width, map_height, idx, yaw, speed * 1.2, 100);
-            else
-                apply_original_agf(localmap_ptr_->data, resolution, map_width, map_height, idx, yaw, speed * 1.2, 100);
+            switch(agf_type_){
+                case 0:
+                    localmap_utils::apply_original_agf(localmap_ptr_, idx, yaw, speed * 1.2, 100);
+                    break;
+                case 1:
+                    localmap_utils::apply_social_agf(localmap_ptr_, idx, yaw, speed * 1.2, 100, true);
+                    break;
+                case 2:
+                    localmap_utils::apply_social_agf(localmap_ptr_, idx, yaw, speed * 1.2, 100, false);
+                    break;
+            }
         }
     }
 
@@ -457,7 +359,7 @@ void Scan2LocalmapNode::scan_cb(const sensor_msgs::LaserScan &laser_msg) {
 
 
 void Scan2LocalmapNode::sigint_cb(int sig) {
-    cout << "\nNode name: " << ros::this_node::getName() << " is shutdown." << endl;
+    std::cout << "\nNode name: " << ros::this_node::getName() << " is shutdown." << std::endl;
     // All the default sigint handler does is call shutdown()
     ros::shutdown();
 }
