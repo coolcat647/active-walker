@@ -1,3 +1,0 @@
-sensor_msgs/Image image
----
-walker_msgs/Detection2D result
